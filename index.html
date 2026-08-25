@@ -26,8 +26,8 @@
 
     <!-- ══ 01 LAYOUT ══ -->
     <aside class="panel">
-      <div class="panel-tab"><span class="tab-group">01</span><span class="tab-name">LAYOUT</span></div>
-      <div class="panel-body">
+      <div class="panel-tab" data-panel="layout"><span class="tab-group">01</span><span class="tab-name">LAYOUT</span></div>
+      <div class="panel-body" data-panel="layout">
         <div class="panel-scroll">
 
           <section class="block">
@@ -135,8 +135,8 @@
 
     <!-- ══ 02 PREVIEW ══ -->
     <main class="panel stage">
-      <div class="panel-tab"><span class="tab-group">02</span><span class="tab-name">PREVIEW</span></div>
-      <div class="panel-body stage-body">
+      <div class="panel-tab" data-panel="preview"><span class="tab-group">02</span><span class="tab-name">PREVIEW</span></div>
+      <div class="panel-body stage-body" data-panel="preview">
         <div class="stage-inner" id="stageInner">
           <div class="canvas-box" id="canvasBox">
             <canvas id="canvas"></canvas>
@@ -155,16 +155,17 @@
           <label class="check check-sm">
             <input type="checkbox" id="snapOn"><span>스냅</span>
           </label>
+          <button class="mini-btn is-hidden" id="viewReset" type="button">화면 맞춤</button>
           <span class="spacer"></span>
-          <span class="stage-tip">빈 칸을 클릭해 사진 넣기 · 드래그로 이동 · 휠로 확대</span>
+          <span class="stage-tip">빈 칸을 클릭해 사진 넣기 · 드래그로 이동 · 휠로 확대 · 두 손가락(또는 Ctrl+휠)으로 화면 확대</span>
         </div>
       </div>
     </main>
 
     <!-- ══ 03 ELEMENTS ══ -->
     <aside class="panel">
-      <div class="panel-tab"><span class="tab-group">03</span><span class="tab-name">ELEMENTS</span></div>
-      <div class="panel-body">
+      <div class="panel-tab" data-panel="elements"><span class="tab-group">03</span><span class="tab-name">ELEMENTS</span></div>
+      <div class="panel-body" data-panel="elements">
 
         <div class="panel-scroll">
           <section class="block">

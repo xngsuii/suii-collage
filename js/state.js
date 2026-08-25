@@ -73,6 +73,9 @@ export const state = {
   // 정렬을 돕는 안내선. 미리보기에만 그리고 내보낸 이미지에는 남지 않는다.
   grid: { show: false, snap: false, cols: 3, rows: 3 },
 
+  // 미리보기를 들여다보는 배율. 결과물에는 영향을 주지 않는다.
+  view: { scale: 1, x: 0, y: 0 },
+
   exportFormat: 'png',
   quality: 0.92,
 };

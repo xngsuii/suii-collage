@@ -182,6 +182,7 @@ export function initLeftPanel(actions) {
   photoPropsEl.addEventListener("input", onPropInput);
   photoPropsEl.addEventListener("change", onNumCommit);
   photoPropsEl.addEventListener("click", (e) => onPropClick(e, actions));
+  trackGroupToggles(photoPropsEl);
 
   syncModeBlocks();
   syncCanvasFields();
@@ -283,6 +284,7 @@ export function initRightPanel(actions) {
   propsEl.addEventListener("input", onPropInput);
   propsEl.addEventListener("change", onNumCommit);
   propsEl.addEventListener("click", (e) => onPropClick(e, actions));
+  trackGroupToggles(propsEl);
 }
 
 /* 레이어 칸 우상단 + 드롭다운 */
@@ -298,7 +300,16 @@ function initAddMenu(actions) {
     e.stopPropagation();
     const open = list.classList.toggle('is-hidden');
     btn.setAttribute('aria-expanded', String(!open));
+    if (open) return;
+    // 화면 기준으로 띄우므로 열 때마다 버튼 위치를 다시 잰다.
+    const r = btn.getBoundingClientRect();
+    list.style.top = `${r.bottom + 4}px`;
+    list.style.right = `${window.innerWidth - r.right}px`;
   });
+
+  // 스크롤하면 버튼과 어긋나므로 닫는다.
+  window.addEventListener('scroll', close, true);
+  window.addEventListener('resize', close);
 
   list.addEventListener('click', (e) => {
     const item = e.target.closest('[data-add]');
@@ -316,8 +327,38 @@ function initAddMenu(actions) {
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 }
 
+/* 좁은 화면에서는 패널을 탭으로 전환한다. 넓은 화면에서는 CSS 가 무시한다. */
+export function initPanelTabs() {
+  const tabs = [...document.querySelectorAll('.panel-tab')];
+  const bodies = [...document.querySelectorAll('.panel-body')];
+
+  const activate = (name) => {
+    for (const t of tabs) t.classList.toggle('is-active', t.dataset.panel === name);
+    for (const b of bodies) b.classList.toggle('is-active', b.dataset.panel === name);
+    // 숨어 있던 미리보기가 나오면 크기를 다시 재야 한다.
+    render();
+    paintAllRanges();
+  };
+
+  for (const t of tabs) t.addEventListener('click', () => activate(t.dataset.panel));
+  activate('preview');
+}
+
+/* 미리보기를 들여다보는 배율 표시 */
+export function syncViewReset() {
+  $('viewReset').classList.toggle('is-hidden', state.view.scale === 1);
+}
+
 /* 미리보기 아래 그리드 · 스냅 */
 export function initStageBar() {
+  $('viewReset').addEventListener('click', () => {
+    state.view.scale = 1;
+    state.view.x = 0;
+    state.view.y = 0;
+    render();
+    syncViewReset();
+  });
+
   $('gridOn').addEventListener('change', (e) => { state.grid.show = e.target.checked; render(); });
   $('snapOn').addEventListener('change', (e) => { state.grid.snap = e.target.checked; });
   $('gridCols').addEventListener('input', (e) => {
@@ -475,8 +516,9 @@ function shapeProps(l) {
 }
 
 function stickerProps(l) {
-  return `${title('스티커 사진')}
-    ${group('크기', slider('크기', 'w', l.w, 40, 6000, 1))}
+  return `${title('스티커')}
+    <div class="sticker-preview"><img src="${l.img.src}" alt=""></div>
+    ${group('크기', slider('', 'w', l.w, 40, 6000, 1))}
 
     ${group('아웃라인', `
       <label class="check"><input type="checkbox" data-path="outline.show" ${l.outline.show ? 'checked' : ''}><span>아웃라인 넣기 (투명 배경이면 피사체 윤곽을 따라감)</span></label>
@@ -516,8 +558,28 @@ function commonGroups(l) {
 
 const title = (text) => `<div class="prop-title">${text}</div>`;
 
-const group = (heading, body) =>
-  `<div class="prop-group">${heading ? `<h3 class="prop-sub">${heading}</h3>` : ''}${body}</div>`;
+/* 제목이 있는 묶음은 접을 수 있고, 열고 닫은 상태를 기억한다. */
+const openGroups = new Set(['글자 모양', '채우기', '크기']);
+
+const group = (heading, body) => {
+  if (!heading) return `<div class="prop-group">${body}</div>`;
+  return `<details class="prop-group"${openGroups.has(heading) ? ' open' : ''}>
+    <summary class="prop-sub">${heading}</summary>
+    <div class="prop-body">${body}</div>
+  </details>`;
+};
+
+/* toggle 은 버블링하지 않으므로 캡처 단계에서 받는다. */
+function trackGroupToggles(container) {
+  container.addEventListener('toggle', (e) => {
+    const details = e.target;
+    if (!details.classList?.contains('prop-group')) return;
+    const key = details.querySelector('summary')?.textContent;
+    if (!key) return;
+    if (details.open) openGroups.add(key);
+    else openGroups.delete(key);
+  }, true);
+}
 
 /* opts.reset: 초기화 버튼의 action 이름
    opts.scale: 화면 값 × scale = 상태에 저장할 값 (회전은 도로 보여주고 라디안으로 저장) */
@@ -527,7 +589,7 @@ function slider(label, path, value, min, max, step, opts = {}) {
          <span class="slider-label">${label}</span>
          <button class="mini-btn" data-action="${opts.reset}" type="button">초기화</button>
        </span>`
-    : `<span class="slider-label">${label}</span>`;
+    : label ? `<span class="slider-label">${label}</span>` : '';
   const scale = opts.scale ? ` data-scale="${opts.scale}"` : '';
   const attrs = `data-path="${path}" data-num="1"${scale} min="${min}" max="${max}" step="${step}"`;
   return `<div class="slider">${head}
@@ -783,7 +845,7 @@ export function refreshLayerList() {
 function layerName(l) {
   if (l.type === 'text') return (l.text || '텍스트').split('\n')[0].slice(0, 24) || '텍스트';
   if (l.type === 'shape') return l.shape === 'circle' ? '원' : '사각형';
-  return '스티커 사진';
+  return '스티커';
 }
 
 /* 목록을 끌어서 앞뒤 순서를 바꾼다. 끄는 줄은 그대로 두고 나머지가 밀려난다. */

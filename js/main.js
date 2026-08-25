@@ -5,8 +5,8 @@ import { render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText
 import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from './geometry.js';
 import { pickImages } from './files.js';
 import {
-  initLeftPanel, initRightPanel, initStageBar, initLayerReorder,
-  update, refreshProps, syncFromCanvas, paintAllRanges,
+  initLeftPanel, initRightPanel, initStageBar, initLayerReorder, initPanelTabs,
+  update, refreshProps, syncFromCanvas, syncViewReset, paintAllRanges,
 } from './ui.js';
 
 /* ── 좌표 변환 ───────────────────────────── */
@@ -19,11 +19,48 @@ function pointer(e) {
   return { sx, sy, x: sx / k, y: sy / k, k };
 }
 
+/* ── 미리보기 확대(두 손가락 · Ctrl+휠) ──── */
+
+const MAX_VIEW = 6;
+const pointers = new Map();
+let pinch = null;
+
+const clampView = (v) => Math.min(MAX_VIEW, Math.max(1, v));
+
+function startPinch() {
+  const [a, b] = [...pointers.values()];
+  pinch = {
+    dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
+    mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+    scale: state.view.scale,
+    pan: { x: state.view.x, y: state.view.y },
+  };
+}
+
+function movePinch() {
+  const [a, b] = [...pointers.values()];
+  const dist = Math.hypot(a.x - b.x, a.y - b.y);
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  state.view.scale = clampView(pinch.scale * (dist / pinch.dist));
+  state.view.x = pinch.pan.x + (mid.x - pinch.mid.x);
+  state.view.y = pinch.pan.y + (mid.y - pinch.mid.y);
+  if (state.view.scale === 1) { state.view.x = 0; state.view.y = 0; }
+  render();
+  syncViewReset();
+}
+
 /* ── 드래그 상태 ─────────────────────────── */
 
 let drag = null;
 
 overlay.addEventListener('pointerdown', async (e) => {
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size >= 2) {
+    drag = null;                 // 두 손가락이면 요소 조작 대신 화면을 확대한다
+    startPinch();
+    return;
+  }
+
   const p = pointer(e);
   const layer = selectedLayer();
 
@@ -70,6 +107,9 @@ overlay.addEventListener('pointerdown', async (e) => {
 });
 
 overlay.addEventListener('pointermove', (e) => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pinch && pointers.size >= 2) return movePinch();
+
   if (!drag) return;
   const p = pointer(e);
 
@@ -101,16 +141,29 @@ overlay.addEventListener('pointermove', (e) => {
   render();
 });
 
-overlay.addEventListener('pointerup', () => {
+function endPointer(e) {
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) pinch = null;
   if (!drag) return;
   drag = null;
   syncFromCanvas();
-});
+}
 
-overlay.addEventListener('pointercancel', () => { drag = null; });
+overlay.addEventListener('pointerup', endPointer);
+overlay.addEventListener('pointercancel', endPointer);
 
 /* 휠: 레이어 위면 크기, 사진 칸 위면 확대 */
 overlay.addEventListener('wheel', (e) => {
+  // Ctrl(맥은 Cmd)과 함께면 요소가 아니라 보이는 화면을 확대한다.
+  if (e.ctrlKey || e.metaKey) {
+    e.preventDefault();
+    state.view.scale = clampView(state.view.scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+    if (state.view.scale === 1) { state.view.x = 0; state.view.y = 0; }
+    render();
+    syncViewReset();
+    return;
+  }
+
   const p = pointer(e);
   const step = e.deltaY < 0 ? 1.06 : 1 / 1.06;
 
@@ -279,6 +332,7 @@ initLeftPanel(actions);
 initRightPanel(actions);
 initStageBar();
 initLayerReorder();
+initPanelTabs();
 
 // 패널 너비가 바뀌면 슬라이더 채움 경계도 다시 계산해야 한다.
 window.addEventListener('resize', () => { render(); paintAllRanges(); });

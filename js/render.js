@@ -59,15 +59,17 @@ function keepLayersInFrame(prev, next) {
   }
 }
 
-/* 캔버스 박스를 무대 안에 비율 맞춰 채운다. */
+/* 캔버스 박스를 무대 안에 비율 맞춰 채우고, 들여다보는 배율을 곱한다.
+   박스의 실제 크기를 바꾸므로 오버레이 좌표 계산이 그대로 맞아떨어진다. */
 function fitBox(W, H) {
   const stage = box.parentElement;
   const availW = stage.clientWidth - 56;
   const availH = stage.clientHeight - 56;
   if (availW <= 0 || availH <= 0) return;
-  const scale = Math.min(availW / W, availH / H);
+  const scale = Math.min(availW / W, availH / H) * state.view.scale;
   box.style.width = `${Math.round(W * scale)}px`;
   box.style.height = `${Math.round(H * scale)}px`;
+  box.style.transform = `translate(${state.view.x}px, ${state.view.y}px)`;
 }
 
 /* ── 사진 칸 ─────────────────────────────── */

@@ -98,7 +98,7 @@ export function duplicateLayer(id) {
   if (i < 0) return null;
   const src = state.layers[i];
   const copy = { ...src, id: newId(), cx: src.cx + 40, cy: src.cy + 40 };
-  for (const key of ['bg', 'fill', 'stroke', 'outline']) {
+  for (const key of ['bg', 'fill', 'stroke', 'outline', 'shadow']) {
     if (src[key]) copy[key] = { ...src[key] };
   }
   state.layers.splice(i + 1, 0, copy);
@@ -144,7 +144,7 @@ export function makeText(cx, cy, size) {
     color: '#000000',
     stroke: { show: false, color: '#ffffff', width: 0.08 },   // 글자 크기 대비 비율
     bg: { mode: 'none', color: '#ffffff', opacity: 0.9, padX: 0.5, padY: 0.3, radius: 0.15 },
-    shadow: false,
+    shadow: { show: false, opacity: 0.32, blur: 0.014 },   // blur 는 캔버스 짧은 변 대비 비율
     _w: 10, _h: 10,
   };
 }
@@ -157,7 +157,7 @@ export function makeShape(shape, cx, cy, size) {
     radius: shape === 'rect' ? 0.08 : 0,        // 짧은 변 대비 비율
     fill: { mode: 'solid', c1: '#0038ff', c2: '#ffffff', a1: 1, a2: 0, angle: 90, opacity: 1 },
     stroke: { show: false, color: '#000000', width: 4 },
-    shadow: false,
+    shadow: { show: false, opacity: 0.32, blur: 0.014 },   // blur 는 캔버스 짧은 변 대비 비율
     _w: size, _h: size,
   };
 }
@@ -170,7 +170,7 @@ export function makeSticker(img, cx, cy, size) {
     id: newId(), type: 'sticker', img,
     cx, cy, rot: 0, w, h,
     outline: { show: false, color: '#ffffff', width: 14 },
-    shadow: false,
+    shadow: { show: false, opacity: 0.32, blur: 0.014 },   // blur 는 캔버스 짧은 변 대비 비율
     _w: w, _h: h,
   };
 }

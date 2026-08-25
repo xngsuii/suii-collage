@@ -5,7 +5,8 @@ import { render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText
 import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from './geometry.js';
 import { pickImages } from './files.js';
 import {
-  initLeftPanel, initRightPanel, initStageBar, update, refreshProps, syncFromCanvas, paintAllRanges,
+  initLeftPanel, initRightPanel, initStageBar, initLayerReorder,
+  update, refreshProps, syncFromCanvas, paintAllRanges,
 } from './ui.js';
 
 /* ── 좌표 변환 ───────────────────────────── */
@@ -277,8 +278,10 @@ const actions = { addPhoto, addSticker, addText, addShape, fillCell, exportImage
 initLeftPanel(actions);
 initRightPanel(actions);
 initStageBar();
+initLayerReorder();
 
-window.addEventListener('resize', () => { render(); });
+// 패널 너비가 바뀌면 슬라이더 채움 경계도 다시 계산해야 한다.
+window.addEventListener('resize', () => { render(); paintAllRanges(); });
 
 if (document.fonts?.ready) document.fonts.ready.then(() => render());
 

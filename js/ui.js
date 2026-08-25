@@ -14,11 +14,19 @@ const layerListEl = $('layerList');
 
 /* ── 슬라이더 채움 표시 ──────────────────── */
 
+/* CSS 의 thumb 너비와 맞춰야 채움 경계가 손잡이 한가운데에 온다. */
+const THUMB_W = 24;
+
 export function paintRange(el) {
   const min = Number(el.min) || 0;
   const max = Number(el.max);
   const v = Number(el.value);
-  const pct = max === min ? 0 : ((v - min) / (max - min)) * 100;
+  const ratio = max === min ? 0 : (v - min) / (max - min);
+  const w = el.clientWidth;
+  // 손잡이는 양 끝에서 절반씩 안쪽으로만 움직인다. 그 이동 범위에 맞춰 경계를 잡는다.
+  const pct = w > THUMB_W
+    ? ((THUMB_W / 2 + ratio * (w - THUMB_W)) / w) * 100
+    : ratio * 100;
   el.style.setProperty('--pct', `${Math.max(0, Math.min(100, pct))}%`);
 }
 
@@ -29,6 +37,45 @@ export function paintAllRanges(root = document) {
 document.addEventListener('input', (e) => {
   if (e.target.type === 'range') paintRange(e.target);
 }, true);
+
+/* ── 색상 코드 ───────────────────────────── */
+
+const HEX_RE = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+function normalizeHex(value) {
+  const s = String(value).trim();
+  if (!HEX_RE.test(s)) return null;
+  let h = s.replace('#', '');
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  return `#${h.toLowerCase()}`;
+}
+
+/* 색상 견본과 HEX 입력을 한 쌍으로 묶는다. */
+function colorField(label, path, value) {
+  return `<div class="field field-color">
+    <span>${label}</span>
+    <span class="color-pair">
+      <input type="text" class="hex" data-path="${path}" data-hex="1" maxlength="7" value="${String(value).toUpperCase()}">
+      <input type="color" data-path="${path}" value="${value}">
+    </span>
+  </div>`;
+}
+
+/* 패널에 고정으로 박혀 있는 색상 입력 한 쌍을 연결한다. */
+function bindStaticColor(colorEl, hexEl, apply) {
+  colorEl.addEventListener('input', () => {
+    hexEl.value = colorEl.value.toUpperCase();
+    hexEl.classList.remove('is-invalid');
+    apply(colorEl.value);
+  });
+  hexEl.addEventListener('input', () => {
+    const hex = normalizeHex(hexEl.value);
+    hexEl.classList.toggle('is-invalid', !hex);
+    if (!hex) return;
+    colorEl.value = hex;
+    apply(hex);
+  });
+}
 
 /* ── 전체 갱신 ───────────────────────────── */
 
@@ -58,7 +105,7 @@ export function initLeftPanel(actions) {
   segment($('modeSeg'), 'mode', (v) => {
     state.mode = v;
     state.selection = null;
-    // 원본 비율 모드에는 빈 칸 개념이 없으므로 빈 자리를 눌러 없앤다.
+    // 원본 그대로 모드에는 빈 칸 개념이 없으므로 빈 자리를 눌러 없앤다.
     if (v === 'auto') state.photos = state.photos.filter(Boolean);
     syncModeBlocks();
     update();
@@ -82,9 +129,10 @@ export function initLeftPanel(actions) {
   });
 
   rangeControl($('borderW'), $('borderWOut'), (v) => { state.border.width = v; update(); });
-  $('borderColor').addEventListener('input', (e) => { state.border.color = e.target.value; update(); });
   $('borderOuter').addEventListener('change', (e) => { state.border.outer = e.target.checked; update(); });
-  $('bgColor').addEventListener('input', (e) => { state.bg = e.target.value; update(); });
+
+  bindStaticColor($('borderColor'), $('borderColorHex'), (v) => { state.border.color = v; update(); });
+  bindStaticColor($('bgColor'), $('bgColorHex'), (v) => { state.bg = v; update(); });
 
   $('addPhoto').addEventListener('click', actions.addPhoto);
 
@@ -192,7 +240,7 @@ export function initRightPanel(actions) {
   propsEl.addEventListener('click', (e) => onPropClick(e, actions));
 }
 
-/* 레이어 칸 우상단 ＋ 드롭다운 */
+/* 레이어 칸 우상단 + 드롭다운 */
 function initAddMenu(actions) {
   const btn = $('addMenuBtn');
   const list = $('addMenu');
@@ -309,39 +357,44 @@ function weightSeg(l) {
 
 function textProps(l) {
   return `${title('텍스트')}
-    <textarea data-path="text" rows="3">${escapeHtml(l.text)}</textarea>
-    <label class="field"><span>폰트</span>
-      <select data-path="font">${fontOptions(l.font)}</select>
-    </label>
-    ${weightSeg(l)}
-    <div class="icon-row">
-      <button class="icon-btn i-italic ${l.italic ? 'is-active' : ''}" data-toggle="italic" type="button">I</button>
-      <span class="spacer"></span>
-      ${['left', 'center', 'right'].map((a) => `
-        <button class="icon-btn ${l.align === a ? 'is-active' : ''}" data-set="align" data-value="${a}" type="button">${a === 'left' ? '⇤' : a === 'right' ? '⇥' : '↔'}</button>`).join('')}
-    </div>
-    ${slider('크기', 'size', l.size, 12, 400, 1)}
-    ${slider('자간', 'letterSpacing', l.letterSpacing, -0.05, 0.4, 0.005)}
-    ${slider('행간', 'lineHeight', l.lineHeight, 0.9, 2.4, 0.05)}
-    <label class="field field-color"><span>글자색</span><input type="color" data-path="color" value="${l.color}"></label>
+    ${group('', `
+      <textarea data-path="text" rows="3">${escapeHtml(l.text)}</textarea>
+      <label class="field"><span>폰트</span>
+        <select data-path="font">${fontOptions(l.font)}</select>
+      </label>
+      ${weightSeg(l)}
+      <div class="icon-row">
+        <button class="icon-btn i-italic ${l.italic ? 'is-active' : ''}" data-toggle="italic" type="button">I</button>
+        <span class="spacer"></span>
+        ${['left', 'center', 'right'].map((a) => `
+          <button class="icon-btn ${l.align === a ? 'is-active' : ''}" data-set="align" data-value="${a}" type="button">${a === 'left' ? '⇤' : a === 'right' ? '⇥' : '↔'}</button>`).join('')}
+      </div>`)}
 
-    <label class="check"><input type="checkbox" data-path="stroke.show" ${l.stroke.show ? 'checked' : ''}><span>글자 외곽선</span></label>
-    ${l.stroke.show ? `
-      <label class="field field-color"><span>외곽선 색</span><input type="color" data-path="stroke.color" value="${l.stroke.color}"></label>
-      ${slider('외곽선 굵기', 'stroke.width', l.stroke.width, 0.01, 0.4, 0.005)}` : ''}
+    ${group('글자 모양', `
+      ${slider('크기', 'size', l.size, 12, 400, 1)}
+      ${slider('자간', 'letterSpacing', l.letterSpacing, -0.05, 0.4, 0.005)}
+      ${slider('행간', 'lineHeight', l.lineHeight, 0.9, 2.4, 0.05)}
+      ${colorField('글자색', 'color', l.color)}`)}
 
-    <h3 class="block-title">글자 배경</h3>
-    <div class="seg">
-      ${[['none', '없음'], ['solid', '단색'], ['glass', '글래스']].map(([v, t]) => `
-        <button class="seg-btn ${l.bg.mode === v ? 'is-active' : ''}" data-set="bg.mode" data-value="${v}" type="button">${t}</button>`).join('')}
-    </div>
-    ${l.bg.mode === 'none' ? '' : `
-      <label class="field field-color"><span>${l.bg.mode === 'glass' ? '유리 색조' : '배경색'}</span><input type="color" data-path="bg.color" value="${l.bg.color}"></label>
-      ${slider('불투명도', 'bg.opacity', l.bg.opacity, 0.05, 1, 0.01)}
-      ${slider('여백 가로', 'bg.padX', l.bg.padX, 0, 2, 0.05)}
-      ${slider('여백 세로', 'bg.padY', l.bg.padY, 0, 2, 0.05)}
-      ${slider('모서리', 'bg.radius', l.bg.radius, 0, 0.5, 0.01)}`}
-    ${commonProps(l)}`;
+    ${group('글자 외곽선', `
+      <label class="check"><input type="checkbox" data-path="stroke.show" ${l.stroke.show ? 'checked' : ''}><span>외곽선 넣기</span></label>
+      ${l.stroke.show ? `
+        ${colorField('외곽선 색', 'stroke.color', l.stroke.color)}
+        ${slider('굵기', 'stroke.width', l.stroke.width, 0.01, 0.4, 0.005)}` : ''}`)}
+
+    ${group('글자 배경', `
+      <div class="seg">
+        ${[['none', '없음'], ['solid', '단색'], ['glass', '글래스']].map(([v, t]) => `
+          <button class="seg-btn ${l.bg.mode === v ? 'is-active' : ''}" data-set="bg.mode" data-value="${v}" type="button">${t}</button>`).join('')}
+      </div>
+      ${l.bg.mode === 'none' ? '' : `
+        ${colorField(l.bg.mode === 'glass' ? '유리 색조' : '배경색', 'bg.color', l.bg.color)}
+        ${slider('불투명도', 'bg.opacity', l.bg.opacity, 0.05, 1, 0.01)}
+        ${slider('여백 가로', 'bg.padX', l.bg.padX, 0, 2, 0.05)}
+        ${slider('여백 세로', 'bg.padY', l.bg.padY, 0, 2, 0.05)}
+        ${slider('모서리', 'bg.radius', l.bg.radius, 0, 0.5, 0.01)}`}`)}
+
+    ${commonGroups(l)}`;
 }
 
 /* ── 도형 ────────────────────────────────── */
@@ -349,68 +402,101 @@ function textProps(l) {
 function shapeProps(l) {
   const grad = l.fill.mode === 'gradient';
   return `${title(l.shape === 'circle' ? '원' : '사각형')}
-    <div class="seg">
-      ${[['solid', '단색'], ['gradient', '그라데이션'], ['glass', '글래스']].map(([v, t]) => `
-        <button class="seg-btn ${l.fill.mode === v ? 'is-active' : ''}" data-set="fill.mode" data-value="${v}" type="button">${t}</button>`).join('')}
-    </div>
-    <label class="field field-color"><span>${grad ? '시작 색' : '색상'}</span><input type="color" data-path="fill.c1" value="${l.fill.c1}"></label>
-    ${grad ? `
-      ${slider('시작 투명도', 'fill.a1', l.fill.a1, 0, 1, 0.01)}
-      <label class="field field-color"><span>끝 색</span><input type="color" data-path="fill.c2" value="${l.fill.c2}"></label>
-      ${slider('끝 투명도', 'fill.a2', l.fill.a2, 0, 1, 0.01)}
-      ${slider('각도', 'fill.angle', l.fill.angle, 0, 360, 1)}` : ''}
-    ${slider('불투명도', 'fill.opacity', l.fill.opacity, 0.05, 1, 0.01)}
-    ${l.shape === 'rect' ? slider('모서리', 'radius', l.radius, 0, 0.5, 0.01) : ''}
-    ${slider('가로', 'w', l.w, 20, 4000, 1)}
-    ${slider('세로', 'h', l.h, 20, 4000, 1)}
-    <label class="check"><input type="checkbox" data-path="stroke.show" ${l.stroke.show ? 'checked' : ''}><span>외곽선</span></label>
-    ${l.stroke.show ? `
-      <label class="field field-color"><span>선 색상</span><input type="color" data-path="stroke.color" value="${l.stroke.color}"></label>
-      ${slider('선 굵기', 'stroke.width', l.stroke.width, 1, 60, 1)}` : ''}
-    ${commonProps(l)}`;
+    ${group('채우기', `
+      <div class="seg">
+        ${[['solid', '단색'], ['gradient', '그라데이션'], ['glass', '글래스']].map(([v, t]) => `
+          <button class="seg-btn ${l.fill.mode === v ? 'is-active' : ''}" data-set="fill.mode" data-value="${v}" type="button">${t}</button>`).join('')}
+      </div>
+      ${colorField(grad ? '시작 색' : '색상', 'fill.c1', l.fill.c1)}
+      ${grad ? `
+        ${slider('시작 투명도', 'fill.a1', l.fill.a1, 0, 1, 0.01)}
+        ${colorField('끝 색', 'fill.c2', l.fill.c2)}
+        ${slider('끝 투명도', 'fill.a2', l.fill.a2, 0, 1, 0.01)}
+        ${slider('각도', 'fill.angle', l.fill.angle, 0, 360, 1)}` : ''}
+      ${slider('불투명도', 'fill.opacity', l.fill.opacity, 0.05, 1, 0.01)}`)}
+
+    ${group('크기', `
+      ${slider('가로', 'w', l.w, 20, 4000, 1)}
+      ${slider('세로', 'h', l.h, 20, 4000, 1)}
+      ${l.shape === 'rect' ? slider('모서리', 'radius', l.radius, 0, 0.5, 0.01) : ''}`)}
+
+    ${group('외곽선', `
+      <label class="check"><input type="checkbox" data-path="stroke.show" ${l.stroke.show ? 'checked' : ''}><span>외곽선 넣기</span></label>
+      ${l.stroke.show ? `
+        ${colorField('선 색상', 'stroke.color', l.stroke.color)}
+        ${slider('선 굵기', 'stroke.width', l.stroke.width, 1, 60, 1)}` : ''}`)}
+
+    ${commonGroups(l)}`;
 }
 
 function stickerProps(l) {
   return `${title('스티커 사진')}
-    ${slider('크기', 'w', l.w, 40, 6000, 1)}
-    <label class="check"><input type="checkbox" data-path="outline.show" ${l.outline.show ? 'checked' : ''}><span>아웃라인 (투명 배경이면 피사체 윤곽을 따라감)</span></label>
-    ${l.outline.show ? `
-      <label class="field field-color"><span>선 색상</span><input type="color" data-path="outline.color" value="${l.outline.color}"></label>
-      ${slider('선 굵기', 'outline.width', l.outline.width, 1, 80, 1)}` : ''}
-    ${commonProps(l)}`;
+    ${group('크기', slider('크기', 'w', l.w, 40, 6000, 1))}
+
+    ${group('아웃라인', `
+      <label class="check"><input type="checkbox" data-path="outline.show" ${l.outline.show ? 'checked' : ''}><span>아웃라인 넣기 (투명 배경이면 피사체 윤곽을 따라감)</span></label>
+      ${l.outline.show ? `
+        ${colorField('선 색상', 'outline.color', l.outline.color)}
+        ${slider('선 굵기', 'outline.width', l.outline.width, 1, 80, 1)}` : ''}`)}
+
+    ${commonGroups(l)}`;
 }
 
-function commonProps(l) {
-  return `${slider('회전', 'rot', l.rot, -Math.PI, Math.PI, 0.01)}
-    <label class="check"><input type="checkbox" data-path="shadow" ${l.shadow ? 'checked' : ''}><span>그림자</span></label>
+/* 모든 요소가 함께 쓰는 그룹 */
+function commonGroups(l) {
+  return `
+    ${group('그림자', `
+      <label class="check"><input type="checkbox" data-path="shadow.show" ${l.shadow.show ? 'checked' : ''}><span>그림자 넣기</span></label>
+      ${l.shadow.show ? `
+        ${slider('불투명도', 'shadow.opacity', l.shadow.opacity, 0.05, 1, 0.01)}
+        ${slider('번짐 범위', 'shadow.blur', l.shadow.blur, 0.002, 0.08, 0.001)}` : ''}`)}
 
-    <h3 class="block-title">캔버스 기준 정렬</h3>
-    <div class="seg">
-      <button class="seg-btn" data-action="alignX" type="button">가로 중앙</button>
-      <button class="seg-btn" data-action="alignY" type="button">세로 중앙</button>
-      <button class="seg-btn" data-action="alignXY" type="button">정중앙</button>
-    </div>
+    ${group('회전', slider('각도 °', 'rot', (l.rot * 180) / Math.PI, -180, 180, 1,
+      { reset: 'resetRot', scale: Math.PI / 180 }))}
 
-    <div class="field-row">
-      <button class="btn" data-action="front" type="button">맨 앞으로</button>
-      <button class="btn" data-action="back" type="button">맨 뒤로</button>
-    </div>
-    <button class="btn btn-ghost" data-action="deleteLayer" type="button">삭제</button>`;
+    ${group('캔버스 기준 정렬', `
+      <div class="seg">
+        <button class="seg-btn" data-action="alignX" type="button">가로 중앙</button>
+        <button class="seg-btn" data-action="alignY" type="button">세로 중앙</button>
+        <button class="seg-btn" data-action="alignXY" type="button">정중앙</button>
+      </div>`)}
+
+    ${group('순서', `
+      <div class="field-row">
+        <button class="btn" data-action="front" type="button">맨 앞으로</button>
+        <button class="btn" data-action="back" type="button">맨 뒤로</button>
+      </div>
+      <button class="btn btn-ghost" data-action="deleteLayer" type="button">삭제</button>`)}`;
 }
 
 const title = (text) => `<div class="prop-title">${text}</div>`;
 
-function slider(label, path, value, min, max, step) {
-  return `<label class="slider">
-    <span class="slider-label">${label}</span>
+const group = (heading, body) =>
+  `<div class="prop-group">${heading ? `<h3 class="prop-sub">${heading}</h3>` : ''}${body}</div>`;
+
+/* opts.reset: 초기화 버튼의 action 이름
+   opts.scale: 화면 값 × scale = 상태에 저장할 값 (회전은 도로 보여주고 라디안으로 저장) */
+function slider(label, path, value, min, max, step, opts = {}) {
+  const head = opts.reset
+    ? `<span class="slider-head">
+         <span class="slider-label">${label}</span>
+         <button class="mini-btn" data-action="${opts.reset}" type="button">초기화</button>
+       </span>`
+    : `<span class="slider-label">${label}</span>`;
+  const scale = opts.scale ? ` data-scale="${opts.scale}"` : '';
+  return `<div class="slider">${head}
     <span class="slider-row">
-      <input type="range" data-path="${path}" data-num="1" min="${min}" max="${max}" step="${step}" value="${value}">
+      <input type="range" data-path="${path}" data-num="1"${scale} min="${min}" max="${max}" step="${step}" value="${value}">
       <output>${fmt(value, step)}</output>
     </span>
-  </label>`;
+  </div>`;
 }
 
-const fmt = (v, step) => (step >= 1 ? Math.round(v) : Number(v).toFixed(2));
+const fmt = (v, step) => {
+  const s = Number(step);
+  if (s >= 1) return String(Math.round(v));
+  return Number(v).toFixed(s < 0.01 ? 3 : 2);
+};
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -430,9 +516,29 @@ function onPropInput(e) {
   const target = propTarget();
   if (!target) return;
 
+  // HEX 입력은 유효할 때만 반영하고 옆 견본을 맞춘다.
+  if (el.dataset.hex) {
+    const hex = normalizeHex(el.value);
+    el.classList.toggle('is-invalid', !hex);
+    if (!hex) return;
+    setPath(target, el.dataset.path, hex);
+    const swatch = el.parentElement.querySelector('input[type="color"]');
+    if (swatch) swatch.value = hex;
+    render();
+    return;
+  }
+
   const raw = el.type === 'checkbox' ? el.checked : el.value;
   const value = el.dataset.num ? Number(raw) : raw;
-  setPath(target, el.dataset.path, value);
+  setPath(target, el.dataset.path, el.dataset.scale ? value * Number(el.dataset.scale) : value);
+
+  if (el.type === 'color') {
+    const hexInput = el.parentElement.querySelector('.hex');
+    if (hexInput) {
+      hexInput.value = el.value.toUpperCase();
+      hexInput.classList.remove('is-invalid');
+    }
+  }
 
   const out = el.parentElement?.querySelector('output');
   if (out) out.textContent = fmt(value, Number(el.step) || 1);
@@ -492,6 +598,7 @@ function onPropClick(e, actions) {
 
   if (act === 'fillCell') return actions.fillCell(sel.index);
   if (act === 'resetPan' && target) { target.panX = 0; target.panY = 0; target.zoom = 1; update(); return; }
+  if (act === 'resetRot' && target) { target.rot = 0; render(); refreshProps(true); return; }
   if (act === 'removePhoto') {
     // 템플릿 모드에서는 뒤 사진이 앞으로 밀리지 않도록 자리만 비운다.
     if (state.mode === 'template') state.photos[sel.index] = null;
@@ -524,10 +631,11 @@ function syncPropOutputs() {
   const target = propTarget();
   if (!target) return;
   for (const el of [...propsEl.querySelectorAll('[data-path]'), ...photoPropsEl.querySelectorAll('[data-path]')]) {
-    const v = getPath(target, el.dataset.path);
-    if (v === undefined) continue;
-    if (el.type === 'checkbox') el.checked = !!v;
-    else if (document.activeElement !== el) el.value = v;
+    const stored = getPath(target, el.dataset.path);
+    if (stored === undefined) continue;
+    const v = el.dataset.scale ? stored / Number(el.dataset.scale) : stored;
+    if (el.type === 'checkbox') el.checked = !!stored;
+    else if (document.activeElement !== el) el.value = el.dataset.hex ? String(v).toUpperCase() : v;
     if (el.type === 'range') paintRange(el);
     const out = el.parentElement?.querySelector('output');
     if (out) out.textContent = fmt(v, Number(el.step) || 1);
@@ -554,7 +662,12 @@ function getPath(obj, path) {
 
 const KIND_MARK = { text: 'T', shape: '◻', sticker: '▣' };
 
+/* 순서를 바꾸는 중에는 목록을 다시 만들지 않는다. */
+let reorder = null;
+
 export function refreshLayerList() {
+  if (reorder?.moved) return;
+
   if (!state.layers.length) {
     layerListEl.innerHTML = '<li class="layers-empty">추가한 요소가 없습니다.</li>';
     return;
@@ -565,22 +678,12 @@ export function refreshLayerList() {
     const li = document.createElement('li');
     const active = state.selection?.kind === 'layer' && state.selection.id === l.id;
     li.className = 'layer-item' + (active ? ' is-active' : '');
+    li.dataset.id = l.id;
     li.innerHTML = `
       <span class="layer-kind">${KIND_MARK[l.type]}</span>
       <span class="layer-name">${escapeHtml(layerName(l))}</span>
       <button class="layer-act" data-dup="${l.id}" type="button" title="복제">⧉</button>
       <button class="layer-act" data-del="${l.id}" type="button" title="삭제">✕</button>`;
-    li.addEventListener('click', (e) => {
-      if (e.target.dataset.del) { removeLayer(l.id); update(); return; }
-      if (e.target.dataset.dup) {
-        const copy = duplicateLayer(l.id);
-        if (copy) state.selection = { kind: 'layer', id: copy.id };
-        update();
-        return;
-      }
-      state.selection = { kind: 'layer', id: l.id };
-      update();
-    });
     layerListEl.appendChild(li);
   });
 }
@@ -589,6 +692,95 @@ function layerName(l) {
   if (l.type === 'text') return (l.text || '텍스트').split('\n')[0].slice(0, 24) || '텍스트';
   if (l.type === 'shape') return l.shape === 'circle' ? '원' : '사각형';
   return '스티커 사진';
+}
+
+/* 목록을 끌어서 앞뒤 순서를 바꾼다. 끄는 줄은 그대로 두고 나머지가 밀려난다. */
+export function initLayerReorder() {
+  layerListEl.addEventListener('click', (e) => {
+    const del = e.target.closest('[data-del]');
+    if (del) { removeLayer(Number(del.dataset.del)); update(); return; }
+    const dup = e.target.closest('[data-dup]');
+    if (dup) {
+      const copy = duplicateLayer(Number(dup.dataset.dup));
+      if (copy) state.selection = { kind: 'layer', id: copy.id };
+      update();
+    }
+  });
+
+  layerListEl.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.layer-act')) return;
+    const li = e.target.closest('.layer-item');
+    if (!li) return;
+
+    const rows = [...layerListEl.querySelectorAll('.layer-item')];
+    const index = rows.indexOf(li);
+    const step = rows.length > 1
+      ? rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().top
+      : li.getBoundingClientRect().height + 2;
+
+    reorder = { rows, index, target: index, startY: e.clientY, step, li, moved: false };
+    // 포인터가 목록 밖으로 나가도 계속 따라오게 한다.
+    try { layerListEl.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
+  });
+
+  layerListEl.addEventListener('pointermove', (e) => {
+    if (!reorder) return;
+    const dy = e.clientY - reorder.startY;
+    if (!reorder.moved) {
+      if (Math.abs(dy) < 4) return;
+      reorder.moved = true;
+      reorder.li.classList.add('is-dragging');
+      layerListEl.classList.add('is-reordering');
+    }
+    reorder.li.style.transform = `translateY(${dy}px)`;
+
+    const target = Math.max(0, Math.min(
+      reorder.rows.length - 1,
+      reorder.index + Math.round(dy / reorder.step),
+    ));
+    if (target !== reorder.target) {
+      reorder.target = target;
+      shiftRows();
+    }
+  });
+
+  const finish = () => {
+    if (!reorder) return;
+    const { moved, index, target, li, rows } = reorder;
+
+    if (!moved) {
+      state.selection = { kind: 'layer', id: Number(li.dataset.id) };
+      reorder = null;
+      update();
+      return;
+    }
+
+    // 화면은 위가 앞이므로 뒤집힌 순서에서 옮긴 뒤 되돌린다.
+    const display = [...state.layers].reverse();
+    const [layer] = display.splice(index, 1);
+    display.splice(target, 0, layer);
+    state.layers = display.reverse();
+
+    li.classList.remove('is-dragging');
+    layerListEl.classList.remove('is-reordering');
+    for (const row of rows) row.style.transform = '';
+    reorder = null;
+    update();
+  };
+
+  layerListEl.addEventListener('pointerup', finish);
+  layerListEl.addEventListener('pointercancel', finish);
+}
+
+function shiftRows() {
+  const { rows, index, target, step, li } = reorder;
+  rows.forEach((row, i) => {
+    if (row === li) return;
+    let shift = 0;
+    if (index < target && i > index && i <= target) shift = -step;
+    else if (index > target && i >= target && i < index) shift = step;
+    row.style.transform = shift ? `translateY(${shift}px)` : '';
+  });
 }
 
 /* ── 작은 도우미 ─────────────────────────── */

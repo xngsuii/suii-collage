@@ -317,6 +317,18 @@ input[type="color"] {
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 input[type="color"]::-webkit-color-swatch { border: none; border-radius: 1px; }
 
+.color-pair { display: flex; align-items: center; gap: 5px; }
+
+.color-pair .hex {
+  width: 76px;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.color-pair .hex.is-invalid { border-color: #d04040; }
+
 /* ── 슬라이더 ────────────────────────────── */
 
 .slider { display: flex; flex-direction: column; gap: 6px; }
@@ -414,12 +426,17 @@ input[type="range"]::-moz-range-thumb {
 .menu { position: relative; }
 
 .menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
-  height: 22px;
+  height: 24px;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 400;
   line-height: 1;
   cursor: pointer;
 }
@@ -482,6 +499,41 @@ input[type="range"]::-moz-range-thumb {
   text-transform: uppercase;
 }
 
+/* 속성은 분류별로 묶어 사이를 띄운다. */
+.prop-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-2);
+}
+
+.prop-group:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+
+.prop-sub {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.slider-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+.mini-btn {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 10px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mini-btn:hover { border-color: var(--ink); color: var(--ink); }
+
 .icon-row { display: flex; gap: 4px; }
 
 .icon-btn {
@@ -511,11 +563,25 @@ input[type="range"]::-moz-range-thumb {
   border-radius: var(--radius);
   background: var(--panel);
   font-size: 11px;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 .layer-item:hover { border-color: var(--line); }
 .layer-item.is-active { border-color: var(--ink); background: #f4f4f4; }
+
+/* 끌고 있는 줄은 반투명하게 만들지 않고 모양 그대로 띄운다. */
+.layer-item.is-dragging {
+  position: relative;
+  z-index: 5;
+  transition: none;
+  cursor: grabbing;
+  border-color: var(--ink);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.18);
+}
+
+.layers.is-reordering .layer-item { cursor: grabbing; }
 
 .layer-kind { flex: none; width: 14px; text-align: center; color: var(--muted); }
 .layer-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

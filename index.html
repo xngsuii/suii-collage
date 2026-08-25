@@ -97,10 +97,13 @@
                   <output id="borderWOut">4</output>
                 </span>
               </label>
-              <label class="field field-color">
+              <div class="field field-color">
                 <span>선 색상</span>
-                <input type="color" id="borderColor" value="#000000">
-              </label>
+                <span class="color-pair">
+                  <input type="text" class="hex" id="borderColorHex" maxlength="7" value="#000000">
+                  <input type="color" id="borderColor" value="#000000">
+                </span>
+              </div>
               <label class="check">
                 <input type="checkbox" id="borderOuter" checked>
                 <span>가장 바깥 테두리도 그리기</span>
@@ -110,10 +113,13 @@
 
           <section class="block">
             <h2 class="block-title">배경</h2>
-            <label class="field field-color">
+            <div class="field field-color">
               <span>배경색</span>
-              <input type="color" id="bgColor" value="#ffffff">
-            </label>
+              <span class="color-pair">
+                <input type="text" class="hex" id="bgColorHex" maxlength="7" value="#FFFFFF">
+                <input type="color" id="bgColor" value="#ffffff">
+              </span>
+            </div>
           </section>
 
           <section class="block block-last">
@@ -165,7 +171,7 @@
               <h2 class="block-title">레이어</h2>
               <div class="menu">
                 <button class="menu-btn" id="addMenuBtn" type="button" title="요소 추가"
-                        aria-haspopup="true" aria-expanded="false">＋</button>
+                        aria-haspopup="true" aria-expanded="false">+</button>
                 <div class="menu-list is-hidden" id="addMenu" role="menu">
                   <button type="button" data-add="sticker" role="menuitem"><span>▣</span>스티커</button>
                   <button type="button" data-add="text" role="menuitem"><span>T</span>텍스트</button>

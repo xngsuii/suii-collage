@@ -1,16 +1,16 @@
 /* 캔버스 조작(선택·이동·확대·회전)과 앱 초기화. */
 
-import { state, makeText, makeShape, makeSticker, selectedLayer, removeLayer, duplicateLayer } from './state.js';
+import { state, makeText, makeShape, makeSticker, selectedLayer, removeLayer, duplicateLayer } from 'app/state.js';
 import {
   render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText,
   zoomViewAt, panView,
-} from './render.js';
-import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from './geometry.js';
-import { pickImages } from './files.js';
+} from 'app/render.js';
+import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from 'app/geometry.js';
+import { pickImages } from 'app/files.js';
 import {
   initLeftPanel, initRightPanel, initStageBar, initLayerReorder, initPanelTabs,
   update, refreshProps, syncFromCanvas, syncViewReset, paintAllRanges,
-} from './ui.js';
+} from 'app/ui.js';
 
 /* ── 좌표 변환 ───────────────────────────── */
 
@@ -56,8 +56,13 @@ function capture(pointerId) {
   try { overlay.setPointerCapture(pointerId); } catch { /* 합성 이벤트 등 */ }
 }
 
-overlay.addEventListener('pointerdown', async (e) => {
+/* 빈 칸을 눌렀을 때 열 파일 선택창. iOS 사파리는 pointerdown 을 사용자 제스처로
+   인정하지 않는 경우가 있어, 칸 번호만 적어 뒀다가 click 에서 연다. */
+let pendingFill = -1;
+
+overlay.addEventListener('pointerdown', (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  pendingFill = -1;
   if (pointers.size >= 2) {
     drag = null;                 // 두 손가락이면 요소 조작 대신 화면을 확대한다
     pinch = grip();
@@ -102,16 +107,24 @@ overlay.addEventListener('pointerdown', async (e) => {
 
   state.selection = { kind: 'cell', index: idx };
   const photo = state.photos[idx];
-  if (!photo) { update(); await fillCell(idx); return; }
+  if (!photo) { pendingFill = idx; update(); return; }
 
   drag = { mode: 'pan', index: idx, startX: p.x, startY: p.y, panX: photo.panX, panY: photo.panY };
   capture(e.pointerId);
   update();
 });
 
+/* 미리보기의 빈 칸(＋)을 탭하면 바로 사진을 고른다. */
+overlay.addEventListener('click', () => {
+  if (pendingFill < 0) return;
+  const idx = pendingFill;
+  pendingFill = -1;
+  fillCell(idx);
+});
+
 overlay.addEventListener('pointermove', (e) => {
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (pinch && pointers.size >= 2) return movePinch();
+  if (pinch && pointers.size >= 2) { pendingFill = -1; return movePinch(); }
 
   if (!drag) return;
   const p = pointer(e);

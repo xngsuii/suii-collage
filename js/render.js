@@ -1,7 +1,7 @@
 /* 캔버스 그리기. 작품용 캔버스(#canvas)와 선택 표시용 오버레이(#overlay)를 나눠 그린다. */
 
-import { state, selectedLayer, MAX_VIEW } from './state.js';
-import { computeLayout, coverBox, layerCorners, toCanvas } from './geometry.js';
+import { state, selectedLayer, MAX_VIEW } from 'app/state.js';
+import { computeLayout, coverBox, layerCorners, toCanvas } from 'app/geometry.js';
 
 const art = document.getElementById('canvas');
 const actx = art.getContext('2d');
@@ -76,6 +76,9 @@ function fitBox(W, H) {
 
   box.style.width = `${Math.round(w)}px`;
   box.style.height = `${Math.round(h)}px`;
+  // 예전 스타일시트가 캐시에 남아 있어도 한쪽 변만 묶여 눌리지 않게 못을 박는다.
+  box.style.maxWidth = 'none';
+  box.style.maxHeight = 'none';
 
   clampView(w, h, vw, vh);
   box.style.transform = `translate(${Math.round(state.view.x)}px, ${Math.round(state.view.y)}px)`;

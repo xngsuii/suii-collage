@@ -1,6 +1,6 @@
 /* 캔버스 크기와 사진 칸(rect) 계산, 레이어 히트 테스트. */
 
-import { state, template, BASE_SIZE, MAX_SIZE, MAX_AREA } from './state.js';
+import { state, template, BASE_SIZE, MAX_SIZE, MAX_AREA } from 'app/state.js';
 
 const EPS = 1e-6;
 

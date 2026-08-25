@@ -3,9 +3,9 @@
 import {
   state, RATIOS, TEMPLATES, FONTS, KIND_LABEL, WEIGHT_LABEL, findFont,
   template, selectedLayer, removeLayer, duplicateLayer, resizeCanvas, applyRatio,
-} from './state.js';
-import { render, getLayout, resetView } from './render.js';
-import { clampPan } from './geometry.js';
+} from 'app/state.js';
+import { render, getLayout, resetView } from 'app/render.js';
+import { clampPan } from 'app/geometry.js';
 
 const $ = (id) => document.getElementById(id);
 const propsEl = $('props');

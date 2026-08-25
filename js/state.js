@@ -27,18 +27,24 @@ export const TEMPLATES = [
   { id: 'grid9',   cells: Array.from({ length: 9 }, (_, i) => [(i % 3) / 3, Math.floor(i / 3) / 3, 1/3, 1/3]) },
 ];
 
+/* weights 에 없는 굵기는 고를 수 없다(브라우저가 흉내내는 대신 단계를 숨긴다). */
 export const FONTS = [
-  { id: 'Pretendard',       label: 'Pretendard',   kind: '산세리프' },
-  { id: 'Noto Sans KR',     label: '본고딕',        kind: '산세리프' },
-  { id: 'IBM Plex Sans KR', label: 'IBM Plex KR',  kind: '산세리프' },
-  { id: 'Noto Serif KR',    label: '본명조',        kind: '세리프'   },
-  { id: 'Nanum Myeongjo',   label: '나눔명조',      kind: '세리프'   },
-  { id: 'Gowun Batang',     label: '고운바탕',      kind: '세리프'   },
+  { id: 'Pretendard',     label: '프리텐다드', kind: 'sans',  weights: [300, 400, 700] },
+  { id: 'Noto Sans KR',   label: '본고딕',     kind: 'sans',  weights: [300, 400, 700] },
+  { id: 'ChosunGu',       label: '조선굴림체', kind: 'sans',  weights: [400, 700] },
+  { id: 'Noto Serif KR',  label: '본명조',     kind: 'serif', weights: [300, 400, 700] },
+  { id: 'Nanum Myeongjo', label: '나눔명조',   kind: 'serif', weights: [400, 700] },
+  { id: 'Gowun Batang',   label: '고운바탕',   kind: 'serif', weights: [400, 700] },
 ];
 
-/* 캔버스 긴 변의 기준 해상도 */
+export const KIND_LABEL = { sans: '산세리프', serif: '세리프' };
+export const WEIGHT_LABEL = { 300: 'Light', 400: 'Medium', 700: 'Bold' };
+
+export const findFont = (id) => FONTS.find((f) => f.id === id) || FONTS[0];
+
+/* 캔버스 긴 변의 기본 해상도 */
 export const BASE_SIZE = 1600;
-export const MAX_SIZE = 4000;
+export const MAX_SIZE = 8000;
 
 let nextId = 1;
 export const newId = () => nextId++;
@@ -48,6 +54,8 @@ export const state = {
   direction: 'v',          // auto 모드에서 'h' | 'v'
   ratio: { w: 1, h: 1 },   // template 모드 캔버스 비율
   ratioId: '1:1',
+  canvasW: BASE_SIZE,      // 비율에 묶인 실제 픽셀 크기
+  canvasH: BASE_SIZE,
   templateId: 'grid4',
 
   gap: 0,
@@ -78,6 +86,33 @@ export function removeLayer(id) {
   if (state.selection?.kind === 'layer' && state.selection.id === id) state.selection = null;
 }
 
+/* 비율을 유지한 채 픽셀 크기를 맞춘다. side 는 바꾼 쪽. */
+export function resizeCanvas(side, value) {
+  const { w: rw, h: rh } = state.ratio;
+  const v = Math.max(80, Math.min(MAX_SIZE, Math.round(value) || 80));
+  if (side === 'w') {
+    state.canvasW = v;
+    state.canvasH = Math.max(80, Math.round(v * rh / rw));
+  } else {
+    state.canvasH = v;
+    state.canvasW = Math.max(80, Math.round(v * rw / rh));
+  }
+}
+
+/* 비율이 바뀌면 긴 변 길이를 유지한 채 다시 계산한다. */
+export function applyRatio(rw, rh) {
+  const longSide = Math.max(state.canvasW, state.canvasH) || BASE_SIZE;
+  state.ratio = { w: rw, h: rh };
+  state.ratioId = `${rw}:${rh}`;
+  if (rw >= rh) {
+    state.canvasW = longSide;
+    state.canvasH = Math.max(80, Math.round(longSide * rh / rw));
+  } else {
+    state.canvasH = longSide;
+    state.canvasW = Math.max(80, Math.round(longSide * rw / rh));
+  }
+}
+
 /* ── 레이어 생성 ─────────────────────────── */
 
 export function makeText(cx, cy, size) {
@@ -85,7 +120,7 @@ export function makeText(cx, cy, size) {
     id: newId(), type: 'text',
     text: '텍스트를 입력하세요',
     cx, cy, rot: 0,
-    font: 'Pretendard', size, bold: false, italic: false,
+    font: 'Pretendard', size, weight: 400, italic: false,
     align: 'center', lineHeight: 1.35, letterSpacing: 0,
     color: '#000000',
     bg: { mode: 'none', color: '#ffffff', opacity: 0.9, padX: 0.5, padY: 0.3, radius: 0.15 },
@@ -99,7 +134,7 @@ export function makeShape(shape, cx, cy, size) {
     cx, cy, rot: 0,
     w: size, h: size,
     radius: shape === 'rect' ? 0.08 : 0,        // 짧은 변 대비 비율
-    fill: { mode: 'solid', c1: '#0038ff', c2: '#ffffff', angle: 90, opacity: 1 },
+    fill: { mode: 'solid', c1: '#0038ff', c2: '#ffffff', a1: 1, a2: 0, angle: 90, opacity: 1 },
     stroke: { show: false, color: '#000000', width: 4 },
     _w: size, _h: size,
   };

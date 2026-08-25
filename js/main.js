@@ -4,7 +4,7 @@ import { state, makeText, makeShape, makeSticker, selectedLayer, removeLayer } f
 import { render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText } from './render.js';
 import { hitCell, pickLayer, clampPan, layerCorners } from './geometry.js';
 import { pickImages } from './files.js';
-import { initLeftPanel, initRightPanel, update, refreshProps, syncFromCanvas } from './ui.js';
+import { initLeftPanel, initRightPanel, update, refreshProps, syncFromCanvas, paintAllRanges } from './ui.js';
 
 /* ── 좌표 변환 ───────────────────────────── */
 
@@ -261,11 +261,13 @@ function reset() {
 
 /* ── 초기화 ──────────────────────────────── */
 
-initLeftPanel();
-initRightPanel({ addPhoto, addSticker, addText, addShape, fillCell, exportImage, reset });
+const actions = { addPhoto, addSticker, addText, addShape, fillCell, exportImage, reset };
+initLeftPanel(actions);
+initRightPanel(actions);
 
 window.addEventListener('resize', () => { render(); });
 
 if (document.fonts?.ready) document.fonts.ready.then(() => render());
 
+paintAllRanges();
 update();

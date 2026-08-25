@@ -11,10 +11,8 @@ export function computeLayout() {
 }
 
 function templateLayout() {
-  const { w: rw, h: rh } = state.ratio;
-  let W, H;
-  if (rw >= rh) { W = BASE_SIZE; H = Math.round(BASE_SIZE * rh / rw); }
-  else          { H = BASE_SIZE; W = Math.round(BASE_SIZE * rw / rh); }
+  const W = state.canvasW;
+  const H = state.canvasH;
 
   const gap = state.gap;
   const m = state.margin ? gap : 0;

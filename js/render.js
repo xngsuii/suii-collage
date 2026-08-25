@@ -185,6 +185,11 @@ function silhouette(img, w, h, width, color) {
   return { canvas: copy, pad };
 }
 
+/* 글래스 테두리와 블러는 요소 크기가 아니라 캔버스 크기를 기준으로 잡는다.
+   요소를 키워도 테두리가 같이 두꺼워지지 않게 하기 위한 것. */
+const glassEdge = () => Math.max(1.5, Math.min(art.width, art.height) * 0.0022);
+const glassBlur = () => Math.max(10, Math.min(art.width, art.height) * 0.022);
+
 /* 도형 */
 function drawShape(layer) {
   actx.save();
@@ -196,11 +201,11 @@ function drawShape(layer) {
   const build = (c) => shapePath(c, layer, w, h);
 
   if (layer.fill.mode === 'glass') {
-    glassFill(actx, build, layer.fill.c1, layer.fill.opacity * 0.35, Math.max(w, h) * 0.06);
+    glassFill(actx, build, layer.fill.c1, layer.fill.opacity * 0.35, glassBlur());
     actx.save();
     build(actx);
     actx.strokeStyle = 'rgba(255,255,255,0.55)';
-    actx.lineWidth = Math.max(1, Math.min(w, h) * 0.012);
+    actx.lineWidth = glassEdge();
     actx.stroke();
     actx.restore();
   } else {
@@ -240,9 +245,17 @@ function makeGradient(c, layer, w, h) {
   const dx = (Math.cos(a) * len) / 2;
   const dy = (Math.sin(a) * len) / 2;
   const g = c.createLinearGradient(-dx, -dy, dx, dy);
-  g.addColorStop(0, layer.fill.c1);
-  g.addColorStop(1, layer.fill.c2);
+  g.addColorStop(0, rgba(layer.fill.c1, layer.fill.a1));
+  g.addColorStop(1, rgba(layer.fill.c2, layer.fill.a2));
   return g;
+}
+
+/* #rgb / #rrggbb + 알파 → rgba() */
+export function rgba(hex, alpha = 1) {
+  let h = String(hex).replace('#', '');
+  if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+  const n = parseInt(h, 16) || 0;
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 /* ── 텍스트 ──────────────────────────────── */
@@ -250,7 +263,7 @@ function makeGradient(c, layer, w, h) {
 const fontRequests = new Set();
 
 export function fontSpec(layer) {
-  return `${layer.bold ? 700 : 400} ${Math.round(layer.size)}px "${layer.font}"`;
+  return `${layer.weight} ${Math.round(layer.size)}px "${layer.font}"`;
 }
 
 function ensureFont(layer) {
@@ -302,11 +315,11 @@ function drawText(layer) {
     const build = (c) => { c.beginPath(); c.roundRect(-w / 2, -h / 2, w, h, r); c.closePath(); };
 
     if (layer.bg.mode === 'glass') {
-      glassFill(actx, build, layer.bg.color, layer.bg.opacity * 0.4, Math.max(12, layer.size * 0.5));
+      glassFill(actx, build, layer.bg.color, layer.bg.opacity * 0.4, glassBlur());
       actx.save();
       build(actx);
       actx.strokeStyle = 'rgba(255,255,255,0.5)';
-      actx.lineWidth = Math.max(1, layer.size * 0.03);
+      actx.lineWidth = glassEdge();
       actx.stroke();
       actx.restore();
     } else {

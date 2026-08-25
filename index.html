@@ -7,174 +7,185 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;700&family=Nanum+Myeongjo:wght@400;700&family=Noto+Sans+KR:wght@400;700&family=Noto+Serif+KR:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@300;400;700&family=Noto+Serif+KR:wght@300;400;700&display=swap">
+<link rel="stylesheet" href="css/fonts.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
-<div class="app">
+<div class="window">
 
-  <header class="chrome">
-    <div class="chrome-top">
-      <span class="chrome-dots"><i></i><i></i><i></i></span>
-      <nav class="tabs">
-        <button class="tab is-active" type="button">suii collage</button>
-        <button class="tab tab-meta" type="button" id="tabMeta">untitled</button>
-      </nav>
-    </div>
-    <div class="chrome-bar">
-      <span class="chrome-path" id="chromePath">/collage/untitled</span>
-      <span class="chrome-spacer"></span>
-      <span class="chrome-note">모든 처리는 브라우저 안에서만 이루어집니다</span>
-    </div>
-  </header>
+  <div class="window-bar">
+    <span class="dots"><i></i><i></i><i></i></span>
+    <span class="window-title">suii collage</span>
+    <span class="spacer"></span>
+    <span class="window-meta" id="windowMeta">—</span>
+  </div>
 
   <div class="workspace">
 
-    <!-- ══ LEFT : 레이아웃 ══ -->
-    <aside class="panel panel-left">
-      <div class="panel-head">Layout</div>
+    <!-- ══ 01 LAYOUT ══ -->
+    <aside class="panel">
+      <div class="panel-tab"><b>01</b><span>LAYOUT</span></div>
+      <div class="panel-body">
 
-      <section class="block">
-        <h2 class="block-title">배치 방식</h2>
-        <div class="seg" id="modeSeg">
-          <button class="seg-btn is-active" data-mode="auto" type="button">원본 비율</button>
-          <button class="seg-btn" data-mode="template" type="button">캔버스 비율</button>
-        </div>
-      </section>
+        <section class="block">
+          <h2 class="block-title">배치 방식</h2>
+          <div class="seg" id="modeSeg">
+            <button class="seg-btn is-active" data-mode="auto" type="button">원본 비율</button>
+            <button class="seg-btn" data-mode="template" type="button">캔버스 비율</button>
+          </div>
+        </section>
 
-      <section class="block" id="autoBlock">
-        <h2 class="block-title">방향</h2>
-        <div class="seg" id="dirSeg">
-          <button class="seg-btn" data-dir="h" type="button">가로로 붙이기</button>
-          <button class="seg-btn is-active" data-dir="v" type="button">세로로 붙이기</button>
-        </div>
-        <p class="block-note">사진 원본 비율을 그대로 유지한 채 이어 붙입니다.</p>
-      </section>
+        <section class="block" id="autoBlock">
+          <h2 class="block-title">방향</h2>
+          <div class="seg" id="dirSeg">
+            <button class="seg-btn" data-dir="h" type="button">가로로 붙이기</button>
+            <button class="seg-btn is-active" data-dir="v" type="button">세로로 붙이기</button>
+          </div>
+          <p class="block-note">사진 원본 비율을 그대로 유지한 채 이어 붙입니다.</p>
+        </section>
 
-      <section class="block is-hidden" id="ratioBlock">
-        <h2 class="block-title">캔버스 비율</h2>
-        <div class="chips" id="ratioChips"></div>
-        <div class="field-row">
-          <label class="field">
-            <span>가로</span>
-            <input type="number" id="ratioW" min="1" max="100" value="1">
-          </label>
-          <label class="field">
-            <span>세로</span>
-            <input type="number" id="ratioH" min="1" max="100" value="1">
-          </label>
-        </div>
-      </section>
+        <section class="block is-hidden" id="ratioBlock">
+          <h2 class="block-title">캔버스 비율</h2>
+          <div class="chips" id="ratioChips"></div>
+          <div class="pair">
+            <span class="pair-label">비율</span>
+            <input type="number" id="ratioW" min="1" max="200" value="1">
+            <span class="pair-sep">:</span>
+            <input type="number" id="ratioH" min="1" max="200" value="1">
+          </div>
+          <div class="pair">
+            <span class="pair-label">크기</span>
+            <input type="number" id="pxW" min="80" max="8000" step="10" value="1600">
+            <span class="pair-sep">×</span>
+            <input type="number" id="pxH" min="80" max="8000" step="10" value="1600">
+            <span class="pair-unit">px</span>
+          </div>
+          <p class="block-note">한쪽 값을 바꾸면 비율에 맞춰 나머지가 따라갑니다.</p>
+        </section>
 
-      <section class="block is-hidden" id="templateBlock">
-        <h2 class="block-title">템플릿</h2>
-        <div class="templates" id="templates"></div>
-        <p class="block-note" id="templateNote"></p>
-      </section>
+        <section class="block is-hidden" id="templateBlock">
+          <h2 class="block-title">템플릿</h2>
+          <div class="templates" id="templates"></div>
+          <p class="block-note" id="templateNote"></p>
+        </section>
 
-      <section class="block">
-        <h2 class="block-title">간격 &amp; 테두리</h2>
-        <label class="slider">
-          <span class="slider-label">사진 사이 간격</span>
-          <span class="slider-row">
-            <input type="range" id="gap" min="0" max="120" value="0">
-            <output id="gapOut">0</output>
-          </span>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="marginOn">
-          <span>바깥 여백도 같이 주기</span>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="borderOn">
-          <span>테두리 선 보이기</span>
-        </label>
-        <div class="sub is-hidden" id="borderOpts">
+        <section class="block">
+          <h2 class="block-title">간격 &amp; 테두리</h2>
           <label class="slider">
-            <span class="slider-label">굵기</span>
+            <span class="slider-label">사진 사이 간격</span>
             <span class="slider-row">
-              <input type="range" id="borderW" min="1" max="40" value="4">
-              <output id="borderWOut">4</output>
+              <input type="range" id="gap" min="0" max="120" value="0">
+              <output id="gapOut">0</output>
             </span>
           </label>
-          <label class="field field-color">
-            <span>선 색상</span>
-            <input type="color" id="borderColor" value="#000000">
+          <label class="check">
+            <input type="checkbox" id="marginOn">
+            <span>바깥 여백도 같이 주기</span>
           </label>
           <label class="check">
-            <input type="checkbox" id="borderOuter" checked>
-            <span>가장 바깥 테두리도 그리기</span>
+            <input type="checkbox" id="borderOn">
+            <span>테두리 선 보이기</span>
           </label>
-        </div>
-      </section>
+          <div class="sub is-hidden" id="borderOpts">
+            <label class="slider">
+              <span class="slider-label">굵기</span>
+              <span class="slider-row">
+                <input type="range" id="borderW" min="1" max="40" value="4">
+                <output id="borderWOut">4</output>
+              </span>
+            </label>
+            <label class="field field-color">
+              <span>선 색상</span>
+              <input type="color" id="borderColor" value="#000000">
+            </label>
+            <label class="check">
+              <input type="checkbox" id="borderOuter" checked>
+              <span>가장 바깥 테두리도 그리기</span>
+            </label>
+          </div>
+        </section>
 
-      <section class="block">
-        <h2 class="block-title">배경</h2>
-        <label class="field field-color">
-          <span>배경색</span>
-          <input type="color" id="bgColor" value="#ffffff">
-        </label>
-      </section>
+        <section class="block">
+          <h2 class="block-title">배경</h2>
+          <label class="field field-color">
+            <span>배경색</span>
+            <input type="color" id="bgColor" value="#ffffff">
+          </label>
+        </section>
+
+        <section class="block block-last">
+          <h2 class="block-title">사진</h2>
+          <button class="btn" id="addPhoto" type="button">＋ 사진 추가</button>
+          <div class="props" id="photoProps"></div>
+        </section>
+
+      </div>
     </aside>
 
-    <!-- ══ CENTER : 미리보기 ══ -->
-    <main class="stage">
-      <div class="stage-inner" id="stageInner">
-        <div class="canvas-box" id="canvasBox">
-          <canvas id="canvas"></canvas>
-          <canvas id="overlay"></canvas>
+    <!-- ══ 02 PREVIEW ══ -->
+    <main class="panel stage">
+      <div class="panel-tab"><b>02</b><span>PREVIEW</span></div>
+      <div class="panel-body stage-body">
+        <div class="stage-inner" id="stageInner">
+          <div class="canvas-box" id="canvasBox">
+            <canvas id="canvas"></canvas>
+            <canvas id="overlay"></canvas>
+          </div>
         </div>
-      </div>
-      <div class="stage-foot">
-        <span id="sizeReadout">—</span>
-        <span class="chrome-spacer"></span>
-        <span class="stage-tip">빈 칸을 클릭해 사진 넣기 · 드래그로 이동 · 휠로 확대</span>
+        <div class="stage-foot">
+          <span id="sizeReadout">—</span>
+          <span class="spacer"></span>
+          <span>빈 칸을 클릭해 사진 넣기 · 드래그로 이동 · 휠로 확대</span>
+        </div>
       </div>
     </main>
 
-    <!-- ══ RIGHT : 요소 ══ -->
-    <aside class="panel panel-right">
-      <div class="panel-head">Elements</div>
+    <!-- ══ 03 ELEMENTS ══ -->
+    <aside class="panel">
+      <div class="panel-tab"><b>03</b><span>ELEMENTS</span></div>
+      <div class="panel-body">
 
-      <section class="block">
-        <h2 class="block-title">추가하기</h2>
-        <div class="add-grid">
-          <button class="add-btn" id="addPhoto" type="button"><span>＋</span>사진</button>
-          <button class="add-btn" id="addSticker" type="button"><span>◳</span>스티커</button>
-          <button class="add-btn" id="addText" type="button"><span>T</span>텍스트</button>
-          <button class="add-btn" id="addRect" type="button"><span>▭</span>사각형</button>
-          <button class="add-btn" id="addCircle" type="button"><span>◯</span>원</button>
-        </div>
-      </section>
+        <section class="block">
+          <h2 class="block-title">추가하기</h2>
+          <div class="add-grid">
+            <button class="add-btn" id="addSticker" type="button"><span>◳</span>스티커</button>
+            <button class="add-btn" id="addText" type="button"><span>T</span>텍스트</button>
+            <button class="add-btn" id="addRect" type="button"><span>▭</span>사각형</button>
+            <button class="add-btn" id="addCircle" type="button"><span>◯</span>원</button>
+          </div>
+        </section>
 
-      <section class="block block-grow">
-        <h2 class="block-title">선택한 요소</h2>
-        <div id="props" class="props"><p class="block-note">캔버스에서 요소를 선택하세요.</p></div>
-      </section>
+        <section class="block">
+          <h2 class="block-title">레이어</h2>
+          <ul class="layers" id="layerList"></ul>
+        </section>
 
-      <section class="block">
-        <h2 class="block-title">레이어</h2>
-        <ul class="layers" id="layerList"></ul>
-      </section>
+        <section class="block block-grow">
+          <h2 class="block-title">선택한 요소</h2>
+          <div id="props" class="props"></div>
+        </section>
 
-      <section class="block">
-        <h2 class="block-title">내보내기</h2>
-        <div class="seg" id="formatSeg">
-          <button class="seg-btn is-active" data-format="png" type="button">PNG</button>
-          <button class="seg-btn" data-format="jpeg" type="button">JPEG</button>
-          <button class="seg-btn" data-format="webp" type="button">WEBP</button>
-        </div>
-        <label class="slider is-hidden" id="qualityWrap">
-          <span class="slider-label">품질</span>
-          <span class="slider-row">
-            <input type="range" id="quality" min="40" max="100" value="92">
-            <output id="qualityOut">92</output>
-          </span>
-        </label>
-        <button class="btn btn-primary" id="exportBtn" type="button">이미지 저장</button>
-        <button class="btn btn-ghost" id="resetBtn" type="button">전체 초기화</button>
-      </section>
+        <section class="block block-last">
+          <h2 class="block-title">내보내기</h2>
+          <div class="seg" id="formatSeg">
+            <button class="seg-btn is-active" data-format="png" type="button">PNG</button>
+            <button class="seg-btn" data-format="jpeg" type="button">JPEG</button>
+            <button class="seg-btn" data-format="webp" type="button">WEBP</button>
+          </div>
+          <label class="slider is-hidden" id="qualityWrap">
+            <span class="slider-label">품질</span>
+            <span class="slider-row">
+              <input type="range" id="quality" min="40" max="100" value="92">
+              <output id="qualityOut">92</output>
+            </span>
+          </label>
+          <button class="btn btn-primary" id="exportBtn" type="button">이미지 저장</button>
+          <button class="btn btn-ghost" id="resetBtn" type="button">전체 초기화</button>
+        </section>
+
+      </div>
     </aside>
 
   </div>

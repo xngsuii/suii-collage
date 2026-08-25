@@ -1,10 +1,12 @@
 /* 캔버스 조작(선택·이동·확대·회전)과 앱 초기화. */
 
-import { state, makeText, makeShape, makeSticker, selectedLayer, removeLayer } from './state.js';
+import { state, makeText, makeShape, makeSticker, selectedLayer, removeLayer, duplicateLayer } from './state.js';
 import { render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText } from './render.js';
-import { hitCell, pickLayer, clampPan, layerCorners } from './geometry.js';
+import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from './geometry.js';
 import { pickImages } from './files.js';
-import { initLeftPanel, initRightPanel, update, refreshProps, syncFromCanvas, paintAllRanges } from './ui.js';
+import {
+  initLeftPanel, initRightPanel, initStageBar, update, refreshProps, syncFromCanvas, paintAllRanges,
+} from './ui.js';
 
 /* ── 좌표 변환 ───────────────────────────── */
 
@@ -71,8 +73,10 @@ overlay.addEventListener('pointermove', (e) => {
   const p = pointer(e);
 
   if (drag.mode === 'move') {
-    drag.layer.cx = p.x + drag.dx;
-    drag.layer.cy = p.y + drag.dy;
+    const { W, H } = getLayout();
+    const snapped = snapPoint(p.x + drag.dx, p.y + drag.dy, W, H);
+    drag.layer.cx = snapped.x;
+    drag.layer.cy = snapped.y;
   } else if (drag.mode === 'rotate') {
     drag.layer.rot = normalizeAngle(angleTo(drag.layer, p) - drag.startAngle);
   } else if (drag.mode === 'scale') {
@@ -146,6 +150,14 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.key === 'Escape') { state.selection = null; update(); return; }
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && layer) {
+    e.preventDefault();
+    const copy = duplicateLayer(layer.id);
+    if (copy) state.selection = { kind: 'layer', id: copy.id };
+    update();
+    return;
+  }
 
   const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
   if (nudge && layer) {
@@ -240,7 +252,7 @@ function exportImage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `suii-collage-${stamp()}.${ext}`;
+    a.download = `collage-${stamp()}.${ext}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }, `image/${format}`, quality);
@@ -264,6 +276,7 @@ function reset() {
 const actions = { addPhoto, addSticker, addText, addShape, fillCell, exportImage, reset };
 initLeftPanel(actions);
 initRightPanel(actions);
+initStageBar();
 
 window.addEventListener('resize', () => { render(); });
 

@@ -14,6 +14,7 @@
   --line-2: #ececec;
   --accent: #0038ff;
   --accent-soft: #eaeeff;
+  --group: #262626;
 
   --track: #d9d9d9;
   --track-done: #ffffff;
@@ -105,41 +106,39 @@ button, input, select, textarea { font: inherit; color: inherit; }
   flex-direction: column;
 }
 
-/* 패널마다 붙는 탭 */
+/* 패널마다 붙는 탭 — 크롬 탭 그룹 모양 */
 .panel-tab {
   align-self: flex-start;
   position: relative;
   z-index: 1;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 3px;
   margin-bottom: -1px;
+  padding: 3px 3px 0;
+  border-radius: 9px 9px 0 0;
+  background: var(--group);
+  white-space: nowrap;
+}
+
+.tab-group {
+  padding: 0 9px 3px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.tab-name {
   padding: 5px 16px 6px;
-  border: 1px solid var(--line);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
+  border-radius: 7px 7px 0 0;
   background: var(--panel);
+  color: var(--ink);
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.panel-tab b {
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-}
-
-.panel-tab::after {
-  content: "";
-  position: absolute;
-  left: 34px;
-  top: 6px;
-  bottom: 6px;
-  width: 1px;
-  background: var(--line);
 }
 
 .panel-body {
@@ -150,8 +149,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 0 4px 4px 4px;
+  overflow: hidden;
+}
+
+/* 스크롤은 안쪽에서만 — 하단 고정 영역은 남는다. */
+.panel-scroll {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+.panel-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px var(--panel-pad) 14px;
+  border-top: 1px solid var(--line);
+  background: #fbfbfb;
 }
 
 /* ── 블록 ────────────────────────────────── */
@@ -389,25 +407,55 @@ input[type="range"]::-moz-range-thumb {
   border-left: 1px solid var(--line-2);
 }
 
-/* ── 추가 버튼 ───────────────────────────── */
+/* ── 블록 헤더 + 추가 드롭다운 ───────────── */
 
-.add-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
-.add-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 11px 4px;
+.menu { position: relative; }
+
+.menu-btn {
+  width: 24px;
+  height: 22px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
-  font-size: 11px;
+  font-size: 13px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.add-btn span { font-size: 14px; line-height: 1; }
-.add-btn:hover { border-color: var(--ink); }
+.menu-btn:hover, .menu-btn[aria-expanded="true"] { border-color: var(--ink); background: var(--ink); color: #fff; }
+
+.menu-list {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 128px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border: 1px solid var(--ink);
+  border-radius: 5px;
+  background: var(--panel);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16);
+}
+
+.menu-list button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 9px;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-list button span { width: 14px; text-align: center; color: var(--muted); }
+.menu-list button:hover { background: #f0f0f0; }
 
 /* ── 속성 ────────────────────────────────── */
 
@@ -474,16 +522,18 @@ input[type="range"]::-moz-range-thumb {
 
 .layer-act {
   flex: none;
-  width: 18px;
-  height: 18px;
+  width: 19px;
+  height: 19px;
   border: none;
+  border-radius: 3px;
   background: none;
   color: var(--muted);
   font-size: 11px;
+  line-height: 1;
   cursor: pointer;
 }
 
-.layer-act:hover { color: var(--ink); }
+.layer-act:hover { color: var(--ink); background: #ededed; }
 .layers-empty { padding: 4px 0; font-size: 11px; color: var(--muted); }
 
 /* ── 버튼 ────────────────────────────────── */
@@ -538,12 +588,24 @@ input[type="range"]::-moz-range-thumb {
   display: flex;
   align-items: center;
   gap: 12px;
-  height: 28px;
+  height: 32px;
   padding: 0 12px;
   border-top: 1px solid var(--line-2);
   font-size: 11px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+.check-sm { font-size: 11px; color: var(--ink-2); align-items: center; }
+.check-sm input { margin: 0; }
+
+.grid-dims { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+
+.grid-dims input {
+  width: 38px;
+  padding: 2px 4px;
+  text-align: center;
+  font-size: 11px;
 }
 
 /* ── 좁은 화면 ───────────────────────────── */

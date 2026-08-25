@@ -2,7 +2,7 @@
 
 import {
   state, RATIOS, TEMPLATES, FONTS, KIND_LABEL, WEIGHT_LABEL, findFont,
-  template, selectedLayer, removeLayer, resizeCanvas, applyRatio,
+  template, selectedLayer, removeLayer, duplicateLayer, resizeCanvas, applyRatio,
 } from './state.js';
 import { render, getLayout } from './render.js';
 import { clampPan } from './geometry.js';
@@ -43,11 +43,9 @@ export function update() {
 
 function refreshMeta() {
   const { W, H } = getLayout();
-  $('sizeReadout').textContent =
-    `${W} × ${H} px · 사진 ${photoCount()}장 · 요소 ${state.layers.length}개`;
   $('windowMeta').textContent = state.mode === 'template'
-    ? `${state.ratioId} · ${W} × ${H}`
-    : `원본 비율 · ${state.direction === 'h' ? '가로' : '세로'} · ${W} × ${H}`;
+    ? `${state.ratioId} · ${W} × ${H} px`
+    : `원본 그대로 · ${state.direction === 'h' ? '가로' : '세로'} · ${W} × ${H} px`;
   if (state.mode === 'template') updateTemplateNote();
 }
 
@@ -179,10 +177,7 @@ function buildTemplates() {
 /* ── 오른쪽 패널 ─────────────────────────── */
 
 export function initRightPanel(actions) {
-  $('addSticker').addEventListener('click', actions.addSticker);
-  $('addText').addEventListener('click', actions.addText);
-  $('addRect').addEventListener('click', () => actions.addShape('rect'));
-  $('addCircle').addEventListener('click', () => actions.addShape('circle'));
+  initAddMenu(actions);
   $('exportBtn').addEventListener('click', actions.exportImage);
   $('resetBtn').addEventListener('click', actions.reset);
 
@@ -195,6 +190,51 @@ export function initRightPanel(actions) {
 
   propsEl.addEventListener('input', onPropInput);
   propsEl.addEventListener('click', (e) => onPropClick(e, actions));
+}
+
+/* 레이어 칸 우상단 ＋ 드롭다운 */
+function initAddMenu(actions) {
+  const btn = $('addMenuBtn');
+  const list = $('addMenu');
+  const close = () => {
+    list.classList.add('is-hidden');
+    btn.setAttribute('aria-expanded', 'false');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = list.classList.toggle('is-hidden');
+    btn.setAttribute('aria-expanded', String(!open));
+  });
+
+  list.addEventListener('click', (e) => {
+    const item = e.target.closest('[data-add]');
+    if (!item) return;
+    close();
+    const kind = item.dataset.add;
+    if (kind === 'sticker') actions.addSticker();
+    else if (kind === 'text') actions.addText();
+    else actions.addShape(kind);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!list.classList.contains('is-hidden') && !e.target.closest('.menu')) close();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+}
+
+/* 미리보기 아래 그리드 · 스냅 */
+export function initStageBar() {
+  $('gridOn').addEventListener('change', (e) => { state.grid.show = e.target.checked; render(); });
+  $('snapOn').addEventListener('change', (e) => { state.grid.snap = e.target.checked; });
+  $('gridCols').addEventListener('input', (e) => {
+    state.grid.cols = Math.max(1, Math.min(24, Number(e.target.value) || 1));
+    render();
+  });
+  $('gridRows').addEventListener('input', (e) => {
+    state.grid.rows = Math.max(1, Math.min(24, Number(e.target.value) || 1));
+    render();
+  });
 }
 
 /* 속성 패널은 선택 대상이 바뀔 때만 다시 만든다(입력 중 포커스 유지). */
@@ -285,6 +325,11 @@ function textProps(l) {
     ${slider('행간', 'lineHeight', l.lineHeight, 0.9, 2.4, 0.05)}
     <label class="field field-color"><span>글자색</span><input type="color" data-path="color" value="${l.color}"></label>
 
+    <label class="check"><input type="checkbox" data-path="stroke.show" ${l.stroke.show ? 'checked' : ''}><span>글자 외곽선</span></label>
+    ${l.stroke.show ? `
+      <label class="field field-color"><span>외곽선 색</span><input type="color" data-path="stroke.color" value="${l.stroke.color}"></label>
+      ${slider('외곽선 굵기', 'stroke.width', l.stroke.width, 0.01, 0.4, 0.005)}` : ''}
+
     <h3 class="block-title">글자 배경</h3>
     <div class="seg">
       ${[['none', '없음'], ['solid', '단색'], ['glass', '글래스']].map(([v, t]) => `
@@ -332,12 +377,20 @@ function stickerProps(l) {
     ${l.outline.show ? `
       <label class="field field-color"><span>선 색상</span><input type="color" data-path="outline.color" value="${l.outline.color}"></label>
       ${slider('선 굵기', 'outline.width', l.outline.width, 1, 80, 1)}` : ''}
-    <label class="check"><input type="checkbox" data-path="shadow" ${l.shadow ? 'checked' : ''}><span>그림자</span></label>
     ${commonProps(l)}`;
 }
 
 function commonProps(l) {
   return `${slider('회전', 'rot', l.rot, -Math.PI, Math.PI, 0.01)}
+    <label class="check"><input type="checkbox" data-path="shadow" ${l.shadow ? 'checked' : ''}><span>그림자</span></label>
+
+    <h3 class="block-title">캔버스 기준 정렬</h3>
+    <div class="seg">
+      <button class="seg-btn" data-action="alignX" type="button">가로 중앙</button>
+      <button class="seg-btn" data-action="alignY" type="button">세로 중앙</button>
+      <button class="seg-btn" data-action="alignXY" type="button">정중앙</button>
+    </div>
+
     <div class="field-row">
       <button class="btn" data-action="front" type="button">맨 앞으로</button>
       <button class="btn" data-action="back" type="button">맨 뒤로</button>
@@ -448,6 +501,15 @@ function onPropClick(e, actions) {
     return;
   }
   if (act === 'deleteLayer') { removeLayer(sel.id); update(); return; }
+
+  if (act.startsWith('align') && target) {
+    const { W, H } = getLayout();
+    if (act !== 'alignY') target.cx = W / 2;
+    if (act !== 'alignX') target.cy = H / 2;
+    update();
+    return;
+  }
+
   if (act === 'front' || act === 'back') {
     const i = state.layers.findIndex((l) => l.id === sel.id);
     if (i < 0) return;
@@ -506,9 +568,16 @@ export function refreshLayerList() {
     li.innerHTML = `
       <span class="layer-kind">${KIND_MARK[l.type]}</span>
       <span class="layer-name">${escapeHtml(layerName(l))}</span>
+      <button class="layer-act" data-dup="${l.id}" type="button" title="복제">⧉</button>
       <button class="layer-act" data-del="${l.id}" type="button" title="삭제">✕</button>`;
     li.addEventListener('click', (e) => {
       if (e.target.dataset.del) { removeLayer(l.id); update(); return; }
+      if (e.target.dataset.dup) {
+        const copy = duplicateLayer(l.id);
+        if (copy) state.selection = { kind: 'layer', id: copy.id };
+        update();
+        return;
+      }
       state.selection = { kind: 'layer', id: l.id };
       update();
     });

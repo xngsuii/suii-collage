@@ -44,7 +44,9 @@ export const findFont = (id) => FONTS.find((f) => f.id === id) || FONTS[0];
 
 /* 캔버스 긴 변의 기본 해상도 */
 export const BASE_SIZE = 1600;
-export const MAX_SIZE = 8000;
+export const MAX_SIZE = 12000;
+/* 브라우저가 감당할 만한 총 픽셀 수 상한 */
+export const MAX_AREA = 40e6;
 
 let nextId = 1;
 export const newId = () => nextId++;
@@ -68,6 +70,9 @@ export const state = {
 
   selection: null,         // { kind: 'cell', index } | { kind: 'layer', id }
 
+  // 정렬을 돕는 안내선. 미리보기에만 그리고 내보낸 이미지에는 남지 않는다.
+  grid: { show: false, snap: false, cols: 3, rows: 3 },
+
   exportFormat: 'png',
   quality: 0.92,
 };
@@ -84,6 +89,20 @@ export function selectedLayer() {
 export function removeLayer(id) {
   state.layers = state.layers.filter((l) => l.id !== id);
   if (state.selection?.kind === 'layer' && state.selection.id === id) state.selection = null;
+}
+
+/* 원본 바로 위에 복제본을 끼워 넣고 그 복제본을 돌려준다.
+   스티커의 img 는 같은 이미지를 함께 쓴다(다시 읽을 필요가 없다). */
+export function duplicateLayer(id) {
+  const i = state.layers.findIndex((l) => l.id === id);
+  if (i < 0) return null;
+  const src = state.layers[i];
+  const copy = { ...src, id: newId(), cx: src.cx + 40, cy: src.cy + 40 };
+  for (const key of ['bg', 'fill', 'stroke', 'outline']) {
+    if (src[key]) copy[key] = { ...src[key] };
+  }
+  state.layers.splice(i + 1, 0, copy);
+  return copy;
 }
 
 /* 비율을 유지한 채 픽셀 크기를 맞춘다. side 는 바꾼 쪽. */
@@ -123,7 +142,9 @@ export function makeText(cx, cy, size) {
     font: 'Pretendard', size, weight: 400, italic: false,
     align: 'center', lineHeight: 1.35, letterSpacing: 0,
     color: '#000000',
+    stroke: { show: false, color: '#ffffff', width: 0.08 },   // 글자 크기 대비 비율
     bg: { mode: 'none', color: '#ffffff', opacity: 0.9, padX: 0.5, padY: 0.3, radius: 0.15 },
+    shadow: false,
     _w: 10, _h: 10,
   };
 }
@@ -136,6 +157,7 @@ export function makeShape(shape, cx, cy, size) {
     radius: shape === 'rect' ? 0.08 : 0,        // 짧은 변 대비 비율
     fill: { mode: 'solid', c1: '#0038ff', c2: '#ffffff', a1: 1, a2: 0, angle: 90, opacity: 1 },
     stroke: { show: false, color: '#000000', width: 4 },
+    shadow: false,
     _w: size, _h: size,
   };
 }

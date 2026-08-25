@@ -1,6 +1,6 @@
 /* 캔버스 크기와 사진 칸(rect) 계산, 레이어 히트 테스트. */
 
-import { state, template, BASE_SIZE, MAX_SIZE } from './state.js';
+import { state, template, BASE_SIZE, MAX_SIZE, MAX_AREA } from './state.js';
 
 const EPS = 1e-6;
 
@@ -36,13 +36,14 @@ function templateLayout() {
   return { W, H, rects };
 }
 
+/* 사진을 원본 픽셀 크기 그대로 이어 붙인다.
+   크기가 제각각이면 짧은 쪽은 가운데로 맞춘다. */
 function autoLayout() {
   const gap = state.gap;
   const m = state.margin ? gap : 0;
   const photos = state.photos.filter(Boolean);
 
   if (!photos.length) {
-    // 사진이 없을 때는 정사각형 자리 하나만 보여준다.
     const S = BASE_SIZE;
     return { W: S, H: S, rects: [{ x: m, y: m, w: S - m * 2, h: S - m * 2 }] };
   }
@@ -50,32 +51,36 @@ function autoLayout() {
   const rects = [];
 
   if (state.direction === 'h') {
-    const H0 = BASE_SIZE;
+    const H0 = Math.max(...photos.map((p) => p.img.height));
     let x = m;
     for (const p of photos) {
-      const w = p.img.width * (H0 / p.img.height);
-      rects.push({ x, y: m, w, h: H0 });
+      const w = p.img.width;
+      const h = p.img.height;
+      rects.push({ x, y: m + (H0 - h) / 2, w, h });
       x += w + gap;
     }
-    const W = x - gap + m;
-    return { W: Math.round(W), H: Math.round(H0 + m * 2), rects };
+    return { W: Math.round(x - gap + m), H: Math.round(H0 + m * 2), rects };
   }
 
-  const W0 = BASE_SIZE;
+  const W0 = Math.max(...photos.map((p) => p.img.width));
   let y = m;
   for (const p of photos) {
-    const h = p.img.height * (W0 / p.img.width);
-    rects.push({ x: m, y, w: W0, h });
+    const w = p.img.width;
+    const h = p.img.height;
+    rects.push({ x: m + (W0 - w) / 2, y, w, h });
     y += h + gap;
   }
-  const H = y - gap + m;
-  return { W: Math.round(W0 + m * 2), H: Math.round(H), rects };
+  return { W: Math.round(W0 + m * 2), H: Math.round(y - gap + m), rects };
 }
 
-/* 너무 큰 캔버스는 전체를 균일 축소한다. */
+/* 브라우저가 감당하지 못할 만큼 큰 캔버스만 균일 축소한다. */
 function clampSize({ W, H, rects }) {
-  const s = Math.min(1, MAX_SIZE / Math.max(W, H));
-  if (s === 1) return { W, H, rects };
+  const s = Math.min(
+    1,
+    MAX_SIZE / Math.max(W, H),
+    Math.sqrt(MAX_AREA / (W * H)),
+  );
+  if (s >= 1) return { W, H, rects };
   return {
     W: Math.round(W * s),
     H: Math.round(H * s),
@@ -145,6 +150,34 @@ export function hitCell(rects, px, py) {
     if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i;
   }
   return -1;
+}
+
+/* ── 그리드와 스냅 ───────────────────────── */
+
+/* 그리드 선 위치. 0 과 W(H) 도 포함해 가장자리에도 붙는다. */
+export function gridLines(size, count) {
+  const lines = [];
+  for (let i = 0; i <= count; i++) lines.push((size * i) / count);
+  return lines;
+}
+
+/* 스냅이 켜져 있으면 가까운 그리드 선이나 캔버스 중앙으로 끌어당긴다. */
+export function snapPoint(x, y, W, H) {
+  if (!state.grid.snap) return { x, y };
+  const tol = Math.max(6, Math.min(W, H) * 0.012);
+  const xs = [...gridLines(W, state.grid.cols), W / 2];
+  const ys = [...gridLines(H, state.grid.rows), H / 2];
+  return { x: pull(x, xs, tol), y: pull(y, ys, tol) };
+}
+
+function pull(v, candidates, tol) {
+  let best = v;
+  let dist = tol;
+  for (const c of candidates) {
+    const d = Math.abs(v - c);
+    if (d < dist) { dist = d; best = c; }
+  }
+  return best;
 }
 
 /* 위에 있는 레이어부터 검사한다. */

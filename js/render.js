@@ -190,6 +190,24 @@ function silhouette(img, w, h, width, color) {
 const glassEdge = () => Math.max(1.5, Math.min(art.width, art.height) * 0.0022);
 const glassBlur = () => Math.max(10, Math.min(art.width, art.height) * 0.022);
 
+/* 그림자도 같은 이유로 캔버스 기준. */
+function applyShadow(c) {
+  const unit = Math.min(art.width, art.height);
+  c.shadowColor = 'rgba(0, 0, 0, 0.32)';
+  c.shadowBlur = Math.max(6, unit * 0.014);
+  c.shadowOffsetY = Math.max(2, unit * 0.005);
+}
+
+/* 글래스처럼 칠 자체가 반투명한 경우, 아래에 불투명한 판을 깔아 그림자만 흘린다. */
+function castShadow(c, buildPath) {
+  c.save();
+  applyShadow(c);
+  c.fillStyle = '#000';
+  buildPath(c);
+  c.fill();
+  c.restore();
+}
+
 /* 도형 */
 function drawShape(layer) {
   actx.save();
@@ -199,6 +217,8 @@ function drawShape(layer) {
   const w = layer.w;
   const h = layer.h;
   const build = (c) => shapePath(c, layer, w, h);
+
+  if (layer.shadow) castShadow(actx, build);
 
   if (layer.fill.mode === 'glass') {
     glassFill(actx, build, layer.fill.c1, layer.fill.opacity * 0.35, glassBlur());
@@ -314,6 +334,8 @@ function drawText(layer) {
     const r = Math.min(w, h) * Math.min(0.5, layer.bg.radius);
     const build = (c) => { c.beginPath(); c.roundRect(-w / 2, -h / 2, w, h, r); c.closePath(); };
 
+    if (layer.shadow) castShadow(actx, build);
+
     if (layer.bg.mode === 'glass') {
       glassFill(actx, build, layer.bg.color, layer.bg.opacity * 0.4, glassBlur());
       actx.save();
@@ -336,16 +358,31 @@ function drawText(layer) {
   actx.save();
   if (layer.italic) actx.transform(1, 0, -0.21, 1, 0, 0);
   applyTextStyle(actx, layer);
-  actx.fillStyle = layer.color;
 
   const startY = -m.textH / 2 + m.lineH / 2;
   const anchorX = layer.align === 'left'  ? -m.textW / 2
                 : layer.align === 'right' ?  m.textW / 2
                 : 0;
+  const at = (i) => startY + i * m.lineH;
 
-  m.lines.forEach((line, i) => {
-    actx.fillText(line, anchorX, startY + i * m.lineH);
-  });
+  // 배경이 없을 때만 글자 자체에 그림자를 건다. 첫 획에만 걸어야 겹쳐 진해지지 않는다.
+  const textShadow = layer.shadow && layer.bg.mode === 'none';
+
+  if (layer.stroke.show && layer.stroke.width > 0) {
+    actx.save();
+    if (textShadow) applyShadow(actx);
+    actx.strokeStyle = layer.stroke.color;
+    actx.lineWidth = layer.size * layer.stroke.width;
+    actx.lineJoin = 'round';
+    actx.miterLimit = 2;
+    m.lines.forEach((line, i) => actx.strokeText(line, anchorX, at(i)));
+    actx.restore();
+  } else if (textShadow) {
+    applyShadow(actx);
+  }
+
+  actx.fillStyle = layer.color;
+  m.lines.forEach((line, i) => actx.fillText(line, anchorX, at(i)));
   actx.restore();
   actx.restore();
 }
@@ -395,6 +432,9 @@ export function drawOverlay() {
   octx.clearRect(0, 0, cssW, cssH);
 
   const k = cssW / art.width;   // 캔버스 좌표 → 화면 좌표
+
+  if (state.grid.show) drawGrid(cssW, cssH);
+
   const sel = state.selection;
   if (!sel) return;
 
@@ -432,6 +472,27 @@ export function drawOverlay() {
   dot(rot.x, rot.y, true);
 
   for (const p of pts) dot(p.x, p.y, false);
+}
+
+/* 안내용 그리드. 오버레이에만 그리므로 내보낸 이미지에는 남지 않는다. */
+function drawGrid(cssW, cssH) {
+  const { cols, rows } = state.grid;
+  octx.save();
+  octx.lineWidth = 1;
+  octx.strokeStyle = 'rgba(0, 56, 255, 0.34)';
+  octx.beginPath();
+  for (let i = 1; i < cols; i++) {
+    const x = Math.round((cssW * i) / cols) + 0.5;
+    octx.moveTo(x, 0);
+    octx.lineTo(x, cssH);
+  }
+  for (let i = 1; i < rows; i++) {
+    const y = Math.round((cssH * i) / rows) + 0.5;
+    octx.moveTo(0, y);
+    octx.lineTo(cssW, y);
+  }
+  octx.stroke();
+  octx.restore();
 }
 
 function dot(x, y, round) {

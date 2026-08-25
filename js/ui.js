@@ -11,6 +11,7 @@ const $ = (id) => document.getElementById(id);
 const propsEl = $('props');
 const photoPropsEl = $('photoProps');
 const layerListEl = $('layerList');
+const thumbsEl = $('thumbs');
 
 /* ── 슬라이더 채움 표시 ──────────────────── */
 
@@ -84,8 +85,49 @@ export const photoCount = () => state.photos.filter(Boolean).length;
 export function update() {
   render();
   refreshProps();
+  refreshThumbs();
   refreshLayerList();
   refreshMeta();
+}
+
+/* ── 사진 썸네일 ─────────────────────────── */
+
+let panelActions = null;
+
+export function refreshThumbs() {
+  const slots = state.mode === 'template'
+    ? Math.max(state.photos.length, template().cells.length)
+    : state.photos.length;
+
+  thumbsEl.innerHTML = '';
+  if (!slots) return;
+
+  const sel = state.selection;
+  for (let i = 0; i < slots; i++) {
+    const photo = state.photos[i];
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'thumb'
+      + (photo ? '' : ' thumb-empty')
+      + (sel?.kind === 'cell' && sel.index === i ? ' is-active' : '');
+    b.title = `${i + 1}번 칸${photo ? '' : ' (비어 있음)'}`;
+
+    if (photo) {
+      const img = document.createElement('img');
+      img.src = photo.img.src;
+      img.alt = '';
+      b.appendChild(img);
+    } else {
+      b.textContent = '+';
+    }
+
+    b.addEventListener('click', () => {
+      if (!photo) return panelActions?.fillCell(i);
+      state.selection = { kind: 'cell', index: i };
+      update();
+    });
+    thumbsEl.appendChild(b);
+  }
 }
 
 function refreshMeta() {
@@ -99,6 +141,7 @@ function refreshMeta() {
 /* ── 왼쪽 패널 ───────────────────────────── */
 
 export function initLeftPanel(actions) {
+  panelActions = actions;
   buildRatioChips();
   buildTemplates();
 
@@ -119,7 +162,7 @@ export function initLeftPanel(actions) {
   $('pxW').addEventListener('change', (e) => { resizeCanvas('w', Number(e.target.value)); syncCanvasFields(); update(); });
   $('pxH').addEventListener('change', (e) => { resizeCanvas('h', Number(e.target.value)); syncCanvasFields(); update(); });
 
-  rangeControl($('gap'), $('gapOut'), (v) => { state.gap = v; update(); });
+  rangeControl($('gap'), $('gapNum'), (v) => { state.gap = v; update(); });
   $('marginOn').addEventListener('change', (e) => { state.margin = e.target.checked; update(); });
 
   $('borderOn').addEventListener('change', (e) => {
@@ -128,7 +171,7 @@ export function initLeftPanel(actions) {
     update();
   });
 
-  rangeControl($('borderW'), $('borderWOut'), (v) => { state.border.width = v; update(); });
+  rangeControl($('borderW'), $('borderWNum'), (v) => { state.border.width = v; update(); });
   $('borderOuter').addEventListener('change', (e) => { state.border.outer = e.target.checked; update(); });
 
   bindStaticColor($('borderColor'), $('borderColorHex'), (v) => { state.border.color = v; update(); });
@@ -136,8 +179,9 @@ export function initLeftPanel(actions) {
 
   $('addPhoto').addEventListener('click', actions.addPhoto);
 
-  photoPropsEl.addEventListener('input', onPropInput);
-  photoPropsEl.addEventListener('click', (e) => onPropClick(e, actions));
+  photoPropsEl.addEventListener("input", onPropInput);
+  photoPropsEl.addEventListener("change", onNumCommit);
+  photoPropsEl.addEventListener("click", (e) => onPropClick(e, actions));
 
   syncModeBlocks();
   syncCanvasFields();
@@ -234,10 +278,11 @@ export function initRightPanel(actions) {
     $('qualityWrap').classList.toggle('is-hidden', v === 'png');
   });
 
-  rangeControl($('quality'), $('qualityOut'), (v) => { state.quality = v / 100; });
+  rangeControl($('quality'), $('qualityNum'), (v) => { state.quality = v / 100; });
 
-  propsEl.addEventListener('input', onPropInput);
-  propsEl.addEventListener('click', (e) => onPropClick(e, actions));
+  propsEl.addEventListener("input", onPropInput);
+  propsEl.addEventListener("change", onNumCommit);
+  propsEl.addEventListener("click", (e) => onPropClick(e, actions));
 }
 
 /* 레이어 칸 우상단 + 드롭다운 */
@@ -313,12 +358,10 @@ const emptyHint = () =>
 function cellProps(index) {
   const photo = state.photos[index];
   if (!photo) {
-    return `${title('빈 칸')}
-      <p class="block-note">이 칸에 넣을 사진을 고르세요.</p>
+    return `<p class="block-note">이 칸에 넣을 사진을 고르세요.</p>
       <button class="btn" data-action="fillCell" type="button">사진 넣기</button>`;
   }
-  return `${title('선택한 칸')}
-    ${slider('확대', 'zoom', photo.zoom, 1, 4, 0.01)}
+  return `${slider('확대', 'zoom', photo.zoom, 1, 4, 0.01)}
     <div class="field-row">
       <button class="btn" data-action="fillCell" type="button">교체</button>
       <button class="btn" data-action="resetPan" type="button">맞춤</button>
@@ -344,25 +387,27 @@ function fontOptions(current) {
   }).join('');
 }
 
+const WEIGHT_SHORT = { 300: 'L', 400: 'M', 700: 'B' };
+
 function weightSeg(l) {
   const font = findFont(l.font);
   const btns = [300, 400, 700].map((w) => {
     const has = font.weights.includes(w);
     return `<button class="seg-btn ${l.weight === w ? 'is-active' : ''}"
       data-set="weight" data-value="${w}" data-num="1" ${has ? '' : 'disabled'}
-      type="button">${WEIGHT_LABEL[w]}</button>`;
+      title="${WEIGHT_LABEL[w]}" type="button">${WEIGHT_SHORT[w]}</button>`;
   }).join('');
-  return `<div class="seg">${btns}</div>`;
+  return `<div class="seg seg-mini">${btns}</div>`;
 }
 
 function textProps(l) {
   return `${title('텍스트')}
     ${group('', `
       <textarea data-path="text" rows="3">${escapeHtml(l.text)}</textarea>
-      <label class="field"><span>폰트</span>
+      <div class="font-row">
         <select data-path="font">${fontOptions(l.font)}</select>
-      </label>
-      ${weightSeg(l)}
+        ${weightSeg(l)}
+      </div>
       <div class="icon-row">
         <button class="icon-btn i-italic ${l.italic ? 'is-active' : ''}" data-toggle="italic" type="button">I</button>
         <span class="spacer"></span>
@@ -484,12 +529,24 @@ function slider(label, path, value, min, max, step, opts = {}) {
        </span>`
     : `<span class="slider-label">${label}</span>`;
   const scale = opts.scale ? ` data-scale="${opts.scale}"` : '';
+  const attrs = `data-path="${path}" data-num="1"${scale} min="${min}" max="${max}" step="${step}"`;
   return `<div class="slider">${head}
     <span class="slider-row">
-      <input type="range" data-path="${path}" data-num="1"${scale} min="${min}" max="${max}" step="${step}" value="${value}">
-      <output>${fmt(value, step)}</output>
+      <input type="range" ${attrs} value="${value}">
+      <input type="number" class="num" ${attrs} value="${fmt(value, step)}">
     </span>
   </div>`;
+}
+
+/* 한 줄 안의 슬라이더와 숫자 입력은 같은 값을 가리키므로 서로 맞춰준다. */
+function syncSliderRow(source, value) {
+  const row = source.closest('.slider-row');
+  if (!row) return;
+  for (const twin of row.querySelectorAll('[data-path]')) {
+    if (twin === source || document.activeElement === twin) continue;
+    twin.value = twin.type === 'range' ? value : fmt(value, Number(twin.step) || 1);
+    if (twin.type === 'range') paintRange(twin);
+  }
 }
 
 const fmt = (v, step) => {
@@ -530,6 +587,13 @@ function onPropInput(e) {
 
   const raw = el.type === 'checkbox' ? el.checked : el.value;
   const value = el.dataset.num ? Number(raw) : raw;
+
+  // 숫자 칸은 타이핑 도중 범위를 벗어난 값이 잠깐 생긴다. 그때는 반영하지 않고 기다린다.
+  if (el.classList.contains('num')) {
+    if (raw === '' || Number.isNaN(value)) return;
+    if (value < Number(el.min) || value > Number(el.max)) return;
+  }
+
   setPath(target, el.dataset.path, el.dataset.scale ? value * Number(el.dataset.scale) : value);
 
   if (el.type === 'color') {
@@ -540,8 +604,7 @@ function onPropInput(e) {
     }
   }
 
-  const out = el.parentElement?.querySelector('output');
-  if (out) out.textContent = fmt(value, Number(el.step) || 1);
+  syncSliderRow(el, value);
 
   // 폰트를 바꾸면 없는 굵기는 쓸 수 있는 값으로 되돌린다.
   if (el.dataset.path === 'font') {
@@ -554,20 +617,49 @@ function onPropInput(e) {
     return;
   }
 
-  if (state.selection.kind === 'cell') {
+  applyDerived(target, el.dataset.path);
+
+  render();
+  // 체크박스는 하위 옵션이 열리고 닫히므로 패널을 다시 만든다.
+  if (el.type === 'checkbox') refreshProps(true);
+  refreshLayerList();
+}
+
+/* 값 하나를 바꾸면 따라 움직여야 하는 것들 */
+function applyDerived(target, path) {
+  if (state.selection?.kind === 'cell') {
     clampPan(target, getLayout().rects[state.selection.index]);
   }
   if (target.type === 'shape' || target.type === 'sticker') {
-    if (el.dataset.path === 'w' && target.type === 'sticker') {
+    if (path === 'w' && target.type === 'sticker') {
       target.h = target.w * (target.img.height / target.img.width);
     }
     target._w = target.w;
     target._h = target.h;
   }
+}
 
+/* 숫자 칸에서 손을 뗐을 때 범위 안으로 정리한다. */
+function onNumCommit(e) {
+  const el = e.target.closest('.num[data-path]');
+  if (!el) return;
+  const target = propTarget();
+  if (!target) return;
+
+  const min = Number(el.min);
+  const max = Number(el.max);
+  let v = Number(el.value);
+  if (el.value === '' || Number.isNaN(v)) {
+    const stored = getPath(target, el.dataset.path);
+    v = el.dataset.scale ? stored / Number(el.dataset.scale) : stored;
+  }
+  v = Math.min(max, Math.max(min, v));
+
+  el.value = fmt(v, Number(el.step) || 1);
+  setPath(target, el.dataset.path, el.dataset.scale ? v * Number(el.dataset.scale) : v);
+  syncSliderRow(el, v);
+  applyDerived(target, el.dataset.path);
   render();
-  // 체크박스는 하위 옵션이 열리고 닫히므로 패널을 다시 만든다.
-  if (el.type === 'checkbox') refreshProps(true);
   refreshLayerList();
 }
 
@@ -794,10 +886,30 @@ function segment(wrap, key, onPick) {
   });
 }
 
-function rangeControl(input, out, onInput) {
-  input.addEventListener('input', () => {
-    out.textContent = input.value;
-    onInput(Number(input.value));
+/* 슬라이더와 그 옆 숫자 칸을 하나로 묶는다. */
+function rangeControl(range, num, onInput) {
+  const min = Number(range.min);
+  const max = Number(range.max);
+
+  range.addEventListener('input', () => {
+    num.value = range.value;
+    onInput(Number(range.value));
+  });
+
+  num.addEventListener('input', () => {
+    const v = Number(num.value);
+    if (num.value === '' || Number.isNaN(v) || v < min || v > max) return;
+    range.value = v;
+    paintRange(range);
+    onInput(v);
+  });
+
+  num.addEventListener('change', () => {
+    const v = Math.min(max, Math.max(min, Number(num.value) || min));
+    num.value = v;
+    range.value = v;
+    paintRange(range);
+    onInput(v);
   });
 }
 

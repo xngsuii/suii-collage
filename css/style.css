@@ -222,6 +222,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .seg-btn.is-active { background: var(--ink); color: #fff; font-weight: 700; }
 .seg-btn:disabled { color: #c4c4c4; cursor: not-allowed; background: #f7f7f7; }
 
+/* 폰트 선택기 오른쪽에 붙는 굵기 선택 */
+.font-row { display: flex; align-items: center; gap: 6px; }
+.font-row select { flex: 1; min-width: 0; }
+
+.seg-mini { flex: none; }
+
+.seg-mini .seg-btn {
+  min-width: 25px;
+  padding: 5px 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 /* ── 칩 ──────────────────────────────────── */
 
 .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
@@ -335,14 +349,27 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 1px; }
 .slider-label { font-size: 11px; color: var(--ink-2); }
 .slider-row { display: flex; align-items: center; gap: 9px; }
 
-.slider-row output {
+/* 숫자를 눌러 직접 입력할 수 있다. 평소에는 글자처럼 보인다. */
+.slider-row .num {
   flex: none;
-  width: 36px;
-  text-align: right;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
+  width: 52px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
   color: var(--muted);
+  font-size: 11px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  cursor: text;
+  -moz-appearance: textfield;
 }
+
+.slider-row .num:hover { border-color: var(--line); background: var(--field); }
+.slider-row .num:focus { border-color: var(--ink); background: var(--panel); color: var(--ink); }
+
+.slider-row .num::-webkit-inner-spin-button,
+.slider-row .num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
 input[type="range"] {
   flex: 1;
@@ -473,6 +500,35 @@ input[type="range"]::-moz-range-thumb {
 
 .menu-list button span { width: 14px; text-align: center; color: var(--muted); }
 .menu-list button:hover { background: #f0f0f0; }
+
+/* ── 사진 썸네일 ─────────────────────────── */
+
+.thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.thumbs:empty { display: none; }
+
+.thumb {
+  position: relative;
+  aspect-ratio: 1;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--field);
+  cursor: pointer;
+}
+
+.thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.thumb:hover { border-color: var(--ink); }
+.thumb.is-active { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+
+.thumb-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #bdbdbd;
+  font-size: 14px;
+  line-height: 1;
+}
 
 /* ── 속성 ────────────────────────────────── */
 

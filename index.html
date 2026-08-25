@@ -78,7 +78,7 @@
               <span class="slider-label">사진 사이 간격</span>
               <span class="slider-row">
                 <input type="range" id="gap" min="0" max="120" value="0">
-                <output id="gapOut">0</output>
+                <input type="number" class="num" id="gapNum" min="0" max="120" step="1" value="0">
               </span>
             </label>
             <label class="check">
@@ -94,7 +94,7 @@
                 <span class="slider-label">굵기</span>
                 <span class="slider-row">
                   <input type="range" id="borderW" min="1" max="40" value="4">
-                  <output id="borderWOut">4</output>
+                    <input type="number" class="num" id="borderWNum" min="1" max="40" step="1" value="4">
                 </span>
               </label>
               <div class="field field-color">
@@ -125,6 +125,7 @@
           <section class="block block-last">
             <h2 class="block-title">사진</h2>
             <button class="btn" id="addPhoto" type="button">＋ 사진 추가</button>
+            <div class="thumbs" id="thumbs"></div>
             <div class="props" id="photoProps"></div>
           </section>
 
@@ -184,7 +185,6 @@
           </section>
 
           <section class="block block-grow block-last">
-            <h2 class="block-title">선택한 요소</h2>
             <div id="props" class="props"></div>
           </section>
         </div>
@@ -200,7 +200,7 @@
             <span class="slider-label">품질</span>
             <span class="slider-row">
               <input type="range" id="quality" min="40" max="100" value="92">
-              <output id="qualityOut">92</output>
+              <input type="number" class="num" id="qualityNum" min="40" max="100" step="1" value="92">
             </span>
           </label>
           <button class="btn btn-primary" id="exportBtn" type="button">이미지 저장</button>

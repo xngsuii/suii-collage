@@ -47,6 +47,8 @@ export const BASE_SIZE = 1600;
 export const MAX_SIZE = 12000;
 /* 브라우저가 감당할 만한 총 픽셀 수 상한 */
 export const MAX_AREA = 40e6;
+/* 미리보기를 들여다볼 수 있는 최대 배율 */
+export const MAX_VIEW = 6;
 
 let nextId = 1;
 export const newId = () => nextId++;

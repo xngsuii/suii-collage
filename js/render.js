@@ -1,6 +1,6 @@
 /* 캔버스 그리기. 작품용 캔버스(#canvas)와 선택 표시용 오버레이(#overlay)를 나눠 그린다. */
 
-import { state, selectedLayer } from './state.js';
+import { state, selectedLayer, MAX_VIEW } from './state.js';
 import { computeLayout, coverBox, layerCorners, toCanvas } from './geometry.js';
 
 const art = document.getElementById('canvas');
@@ -59,17 +59,60 @@ function keepLayersInFrame(prev, next) {
   }
 }
 
-/* 캔버스 박스를 무대 안에 비율 맞춰 채우고, 들여다보는 배율을 곱한다.
-   박스의 실제 크기를 바꾸므로 오버레이 좌표 계산이 그대로 맞아떨어진다. */
+/* 보기 창(.stage-inner)의 크기는 그대로 두고, 그 안에서 캔버스만 확대·이동한다.
+   박스의 실제 픽셀 크기를 바꾸므로 오버레이 좌표 계산이 그대로 맞아떨어진다.
+   view.x / view.y 는 보기 창 왼쪽 위를 기준으로 한 박스의 위치다. */
+const VIEW_PAD = 28;
+
 function fitBox(W, H) {
   const stage = box.parentElement;
-  const availW = stage.clientWidth - 56;
-  const availH = stage.clientHeight - 56;
-  if (availW <= 0 || availH <= 0) return;
-  const scale = Math.min(availW / W, availH / H) * state.view.scale;
-  box.style.width = `${Math.round(W * scale)}px`;
-  box.style.height = `${Math.round(H * scale)}px`;
-  box.style.transform = `translate(${state.view.x}px, ${state.view.y}px)`;
+  const vw = stage.clientWidth;
+  const vh = stage.clientHeight;
+  if (vw <= 0 || vh <= 0) return;
+
+  const base = Math.min((vw - VIEW_PAD * 2) / W, (vh - VIEW_PAD * 2) / H);
+  const w = W * base * state.view.scale;
+  const h = H * base * state.view.scale;
+
+  box.style.width = `${Math.round(w)}px`;
+  box.style.height = `${Math.round(h)}px`;
+
+  clampView(w, h, vw, vh);
+  box.style.transform = `translate(${Math.round(state.view.x)}px, ${Math.round(state.view.y)}px)`;
+}
+
+/* 보기 창보다 작으면 가운데에, 크면 가장자리가 안쪽으로 들어오지 않게 잡아둔다. */
+function clampView(w, h, vw, vh) {
+  const v = state.view;
+  v.x = w <= vw ? (vw - w) / 2 : Math.min(0, Math.max(vw - w, v.x));
+  v.y = h <= vh ? (vh - h) / 2 : Math.min(0, Math.max(vh - h, v.y));
+}
+
+/* 화면 좌표 (clientX, clientY) 아래 있는 지점을 붙잡은 채 확대한다.
+   상태만 바꾸므로 호출한 쪽에서 render() 를 부른다. */
+export function zoomViewAt(factor, clientX, clientY) {
+  const stage = box.parentElement;
+  const r = stage.getBoundingClientRect();
+  const fx = clientX - r.left;
+  const fy = clientY - r.top;
+
+  const v = state.view;
+  const next = Math.min(MAX_VIEW, Math.max(1, v.scale * factor));
+  if (next === v.scale) return;
+
+  // 초점에서 박스 왼쪽 위까지의 거리는 배율에 비례해 늘어난다.
+  v.x = fx - (fx - v.x) * (next / v.scale);
+  v.y = fy - (fy - v.y) * (next / v.scale);
+  v.scale = next;
+}
+
+export function panView(dx, dy) {
+  state.view.x += dx;
+  state.view.y += dy;
+}
+
+export function resetView() {
+  state.view.scale = 1;   // 위치는 clampView 가 가운데로 되돌린다
 }
 
 /* ── 사진 칸 ─────────────────────────────── */

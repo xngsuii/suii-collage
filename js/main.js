@@ -1,7 +1,10 @@
 /* 캔버스 조작(선택·이동·확대·회전)과 앱 초기화. */
 
 import { state, makeText, makeShape, makeSticker, selectedLayer, removeLayer, duplicateLayer } from './state.js';
-import { render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText } from './render.js';
+import {
+  render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText,
+  zoomViewAt, panView,
+} from './render.js';
 import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from './geometry.js';
 import { pickImages } from './files.js';
 import {
@@ -19,32 +22,27 @@ function pointer(e) {
   return { sx, sy, x: sx / k, y: sy / k, k };
 }
 
-/* ── 미리보기 확대(두 손가락 · Ctrl+휠) ──── */
+/* ── 미리보기 확대(두 손가락 · Ctrl+휠) ────
+   보기 창 크기는 그대로 두고 그 안의 캔버스만 확대·이동한다. */
 
-const MAX_VIEW = 6;
 const pointers = new Map();
 let pinch = null;
 
-const clampView = (v) => Math.min(MAX_VIEW, Math.max(1, v));
-
-function startPinch() {
+/* 두 손가락의 거리와 중점. 직전 값과 비교해 조금씩 확대·이동한다. */
+function grip() {
   const [a, b] = [...pointers.values()];
-  pinch = {
+  return {
     dist: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)),
     mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
-    scale: state.view.scale,
-    pan: { x: state.view.x, y: state.view.y },
   };
 }
 
 function movePinch() {
-  const [a, b] = [...pointers.values()];
-  const dist = Math.hypot(a.x - b.x, a.y - b.y);
-  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-  state.view.scale = clampView(pinch.scale * (dist / pinch.dist));
-  state.view.x = pinch.pan.x + (mid.x - pinch.mid.x);
-  state.view.y = pinch.pan.y + (mid.y - pinch.mid.y);
-  if (state.view.scale === 1) { state.view.x = 0; state.view.y = 0; }
+  const now = grip();
+  // 중점이 움직인 만큼 밀고, 벌어진 만큼 그 중점을 붙잡은 채 확대한다.
+  panView(now.mid.x - pinch.mid.x, now.mid.y - pinch.mid.y);
+  zoomViewAt(now.dist / pinch.dist, now.mid.x, now.mid.y);
+  pinch = now;
   render();
   syncViewReset();
 }
@@ -53,11 +51,16 @@ function movePinch() {
 
 let drag = null;
 
+/* 포인터가 캔버스 밖으로 나가도 계속 따라오게 한다. */
+function capture(pointerId) {
+  try { overlay.setPointerCapture(pointerId); } catch { /* 합성 이벤트 등 */ }
+}
+
 overlay.addEventListener('pointerdown', async (e) => {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size >= 2) {
     drag = null;                 // 두 손가락이면 요소 조작 대신 화면을 확대한다
-    startPinch();
+    pinch = grip();
     return;
   }
 
@@ -69,7 +72,7 @@ overlay.addEventListener('pointerdown', async (e) => {
     const handle = hitHandle(layer, p);
     if (handle === 'rotate') {
       drag = { mode: 'rotate', layer, startAngle: angleTo(layer, p) - layer.rot };
-      overlay.setPointerCapture(e.pointerId);
+      capture(e.pointerId);
       return;
     }
     if (handle === 'corner') {
@@ -78,7 +81,7 @@ overlay.addEventListener('pointerdown', async (e) => {
         startDist: Math.max(4, distTo(layer, p)),
         base: layer.type === 'text' ? layer.size : { w: layer.w, h: layer.h },
       };
-      overlay.setPointerCapture(e.pointerId);
+      capture(e.pointerId);
       return;
     }
   }
@@ -88,7 +91,7 @@ overlay.addEventListener('pointerdown', async (e) => {
   if (hit) {
     state.selection = { kind: 'layer', id: hit.id };
     drag = { mode: 'move', layer: hit, dx: hit.cx - p.x, dy: hit.cy - p.y };
-    overlay.setPointerCapture(e.pointerId);
+    capture(e.pointerId);
     update();
     return;
   }
@@ -102,7 +105,7 @@ overlay.addEventListener('pointerdown', async (e) => {
   if (!photo) { update(); await fillCell(idx); return; }
 
   drag = { mode: 'pan', index: idx, startX: p.x, startY: p.y, panX: photo.panX, panY: photo.panY };
-  overlay.setPointerCapture(e.pointerId);
+  capture(e.pointerId);
   update();
 });
 
@@ -157,8 +160,7 @@ overlay.addEventListener('wheel', (e) => {
   // Ctrl(맥은 Cmd)과 함께면 요소가 아니라 보이는 화면을 확대한다.
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
-    state.view.scale = clampView(state.view.scale * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
-    if (state.view.scale === 1) { state.view.x = 0; state.view.y = 0; }
+    zoomViewAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
     render();
     syncViewReset();
     return;

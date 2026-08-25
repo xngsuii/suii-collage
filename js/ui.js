@@ -4,7 +4,7 @@ import {
   state, RATIOS, TEMPLATES, FONTS, KIND_LABEL, WEIGHT_LABEL, findFont,
   template, selectedLayer, removeLayer, duplicateLayer, resizeCanvas, applyRatio,
 } from './state.js';
-import { render, getLayout } from './render.js';
+import { render, getLayout, resetView } from './render.js';
 import { clampPan } from './geometry.js';
 
 const $ = (id) => document.getElementById(id);
@@ -352,9 +352,7 @@ export function syncViewReset() {
 /* 미리보기 아래 그리드 · 스냅 */
 export function initStageBar() {
   $('viewReset').addEventListener('click', () => {
-    state.view.scale = 1;
-    state.view.x = 0;
-    state.view.y = 0;
+    resetView();
     render();
     syncViewReset();
   });

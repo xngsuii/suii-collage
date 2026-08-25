@@ -1,0 +1,119 @@
+/* 상태와 상수 정의. 다른 모듈은 여기서 state를 읽고 쓴다. */
+
+export const RATIOS = [
+  { id: '1:1',  w: 1,  h: 1  },
+  { id: '4:5',  w: 4,  h: 5  },
+  { id: '5:4',  w: 5,  h: 4  },
+  { id: '9:16', w: 9,  h: 16 },
+  { id: '16:9', w: 16, h: 9  },
+  { id: '3:4',  w: 3,  h: 4  },
+  { id: '4:3',  w: 4,  h: 3  },
+  { id: '2:3',  w: 2,  h: 3  },
+];
+
+/* 템플릿 칸은 0..1 상대 좌표 [x, y, w, h] */
+export const TEMPLATES = [
+  { id: '1',       cells: [[0, 0, 1, 1]] },
+  { id: '2v',      cells: [[0, 0, .5, 1], [.5, 0, .5, 1]] },
+  { id: '2h',      cells: [[0, 0, 1, .5], [0, .5, 1, .5]] },
+  { id: '3v',      cells: [[0, 0, 1/3, 1], [1/3, 0, 1/3, 1], [2/3, 0, 1/3, 1]] },
+  { id: '3h',      cells: [[0, 0, 1, 1/3], [0, 1/3, 1, 1/3], [0, 2/3, 1, 1/3]] },
+  { id: 'grid4',   cells: [[0, 0, .5, .5], [.5, 0, .5, .5], [0, .5, .5, .5], [.5, .5, .5, .5]] },
+  { id: 'bigTop',  cells: [[0, 0, 1, .6], [0, .6, .5, .4], [.5, .6, .5, .4]] },
+  { id: 'bigLeft', cells: [[0, 0, .6, 1], [.6, 0, .4, .5], [.6, .5, .4, .5]] },
+  { id: 'bigBtm',  cells: [[0, 0, .5, .4], [.5, 0, .5, .4], [0, .4, 1, .6]] },
+  { id: 'l5',      cells: [[0, 0, .6, .5], [.6, 0, .4, .5], [0, .5, .4, .5], [.4, .5, .3, .5], [.7, .5, .3, .5]] },
+  { id: 'grid6',   cells: Array.from({ length: 6 }, (_, i) => [(i % 3) / 3, Math.floor(i / 3) / 2, 1/3, 1/2]) },
+  { id: 'grid9',   cells: Array.from({ length: 9 }, (_, i) => [(i % 3) / 3, Math.floor(i / 3) / 3, 1/3, 1/3]) },
+];
+
+export const FONTS = [
+  { id: 'Pretendard',       label: 'Pretendard',   kind: '산세리프' },
+  { id: 'Noto Sans KR',     label: '본고딕',        kind: '산세리프' },
+  { id: 'IBM Plex Sans KR', label: 'IBM Plex KR',  kind: '산세리프' },
+  { id: 'Noto Serif KR',    label: '본명조',        kind: '세리프'   },
+  { id: 'Nanum Myeongjo',   label: '나눔명조',      kind: '세리프'   },
+  { id: 'Gowun Batang',     label: '고운바탕',      kind: '세리프'   },
+];
+
+/* 캔버스 긴 변의 기준 해상도 */
+export const BASE_SIZE = 1600;
+export const MAX_SIZE = 4000;
+
+let nextId = 1;
+export const newId = () => nextId++;
+
+export const state = {
+  mode: 'auto',            // 'auto' | 'template'
+  direction: 'v',          // auto 모드에서 'h' | 'v'
+  ratio: { w: 1, h: 1 },   // template 모드 캔버스 비율
+  ratioId: '1:1',
+  templateId: 'grid4',
+
+  gap: 0,
+  margin: false,           // 바깥 여백도 gap 만큼 줄지
+  bg: '#ffffff',
+  border: { show: false, width: 4, color: '#000000', outer: true },
+
+  photos: [],              // { img, panX, panY, zoom }
+  layers: [],              // sticker | text | shape
+
+  selection: null,         // { kind: 'cell', index } | { kind: 'layer', id }
+
+  exportFormat: 'png',
+  quality: 0.92,
+};
+
+export function template() {
+  return TEMPLATES.find((t) => t.id === state.templateId) || TEMPLATES[5];
+}
+
+export function selectedLayer() {
+  if (!state.selection || state.selection.kind !== 'layer') return null;
+  return state.layers.find((l) => l.id === state.selection.id) || null;
+}
+
+export function removeLayer(id) {
+  state.layers = state.layers.filter((l) => l.id !== id);
+  if (state.selection?.kind === 'layer' && state.selection.id === id) state.selection = null;
+}
+
+/* ── 레이어 생성 ─────────────────────────── */
+
+export function makeText(cx, cy, size) {
+  return {
+    id: newId(), type: 'text',
+    text: '텍스트를 입력하세요',
+    cx, cy, rot: 0,
+    font: 'Pretendard', size, bold: false, italic: false,
+    align: 'center', lineHeight: 1.35, letterSpacing: 0,
+    color: '#000000',
+    bg: { mode: 'none', color: '#ffffff', opacity: 0.9, padX: 0.5, padY: 0.3, radius: 0.15 },
+    _w: 10, _h: 10,
+  };
+}
+
+export function makeShape(shape, cx, cy, size) {
+  return {
+    id: newId(), type: 'shape', shape,          // 'rect' | 'circle'
+    cx, cy, rot: 0,
+    w: size, h: size,
+    radius: shape === 'rect' ? 0.08 : 0,        // 짧은 변 대비 비율
+    fill: { mode: 'solid', c1: '#0038ff', c2: '#ffffff', angle: 90, opacity: 1 },
+    stroke: { show: false, color: '#000000', width: 4 },
+    _w: size, _h: size,
+  };
+}
+
+export function makeSticker(img, cx, cy, size) {
+  const scale = size / Math.max(img.width, img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  return {
+    id: newId(), type: 'sticker', img,
+    cx, cy, rot: 0, w, h,
+    outline: { show: false, color: '#ffffff', width: 14 },
+    shadow: false,
+    _w: w, _h: h,
+  };
+}

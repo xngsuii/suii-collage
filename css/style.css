@@ -183,7 +183,8 @@ button, input, select, textarea { font: inherit; color: inherit; }
   gap: 10px;
 }
 
-.block-grow { flex: 1 0 auto; }
+/* 위쪽 ＋ 드롭다운이 스크롤 영역 밖으로 잘리지 않을 만큼의 자리를 확보한다. */
+.block-grow { flex: 1 0 auto; min-height: 180px; }
 .block-last { border-bottom: none; }
 
 .block-title {
@@ -733,8 +734,30 @@ input[type="range"]::-moz-range-thumb {
 /* ── 좁은 화면 ───────────────────────────── */
 
 @media (max-width: 1100px) {
-  body { padding: 12px; }
-  .workspace { grid-template-columns: 1fr; grid-auto-rows: min-content; overflow-y: auto; }
-  .panel-body { max-height: none; overflow: visible; }
-  .stage { min-height: 60vh; order: -1; }
+  body { padding: 10px; }
+  .window { border-radius: 6px; }
+
+  /* 좁은 화면에서 상단바가 두 줄로 접히지 않도록 글자를 줄인다. */
+  .window-bar { height: 30px; gap: 8px; padding: 0 10px; }
+  .window-title { font-size: 11px; }
+  .window-meta { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dots i { width: 8px; height: 8px; }
+
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-auto-rows: min-content;
+    gap: 10px;
+    padding: 10px;
+    overflow-y: auto;
+  }
+
+  /* 세로로 쌓이면 패널마다 스크롤할 이유가 없다. 드롭다운도 잘리지 않는다. */
+  .panel-body { overflow: visible; }
+  .panel-scroll { overflow: visible; }
+  .block-grow { min-height: 0; }
+
+  .stage { min-height: 62vh; order: -1; }
+
+  .stage-foot { gap: 18px; }
+  .stage-tip { display: none; }
 }

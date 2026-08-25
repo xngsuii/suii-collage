@@ -36,8 +36,9 @@ function templateLayout() {
   return { W, H, rects };
 }
 
-/* 사진을 원본 픽셀 크기 그대로 이어 붙인다.
-   크기가 제각각이면 짧은 쪽은 가운데로 맞춘다. */
+/* 원본 비율을 지킨 채 빈틈 없이 이어 붙인다.
+   맞닿는 변의 길이를 가장 큰 사진에 맞춰 통일하므로 여백이 생기지 않고,
+   사진이 한 장이면 그 사진의 원본 크기가 그대로 남는다. */
 function autoLayout() {
   const gap = state.gap;
   const m = state.margin ? gap : 0;
@@ -54,9 +55,8 @@ function autoLayout() {
     const H0 = Math.max(...photos.map((p) => p.img.height));
     let x = m;
     for (const p of photos) {
-      const w = p.img.width;
-      const h = p.img.height;
-      rects.push({ x, y: m + (H0 - h) / 2, w, h });
+      const w = p.img.width * (H0 / p.img.height);
+      rects.push({ x, y: m, w, h: H0 });
       x += w + gap;
     }
     return { W: Math.round(x - gap + m), H: Math.round(H0 + m * 2), rects };
@@ -65,9 +65,8 @@ function autoLayout() {
   const W0 = Math.max(...photos.map((p) => p.img.width));
   let y = m;
   for (const p of photos) {
-    const w = p.img.width;
-    const h = p.img.height;
-    rects.push({ x: m + (W0 - w) / 2, y, w, h });
+    const h = p.img.height * (W0 / p.img.width);
+    rects.push({ x: m, y, w: W0, h });
     y += h + gap;
   }
   return { W: Math.round(W0 + m * 2), H: Math.round(y - gap + m), rects };

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>suii collage</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>suii collage</h1>
+    <p class="hint">셀을 눌러 사진을 넣고, 드래그로 위치를 옮기고, 휠/핀치로 확대해보세요.</p>
+  </header>
+
+  <main>
+    <section class="layouts" id="layouts" aria-label="레이아웃 선택"></section>
+
+    <div class="canvas-wrap">
+      <canvas id="canvas" width="1200" height="1200"></canvas>
+    </div>
+
+    <section class="controls">
+      <label class="control">
+        <span>간격</span>
+        <input type="range" id="gap" min="0" max="40" value="8">
+      </label>
+      <label class="control">
+        <span>배경색</span>
+        <input type="color" id="bgColor" value="#ffffff">
+      </label>
+      <button id="resetBtn" class="btn ghost">전체 초기화</button>
+      <button id="downloadBtn" class="btn primary">이미지로 저장</button>
+    </section>
+  </main>
+
+  <input type="file" id="fileInput" accept="image/*" hidden>
+
+  <footer>
+    <p>모든 처리는 브라우저 안에서만 이루어져요. 사진은 서버로 전송되지 않아요.</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

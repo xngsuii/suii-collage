@@ -8,8 +8,8 @@ $Out = 'C:\Users\User\suii-collage\icons'
 # Relative geometry, as fractions of the icon's side. The outer square is
 # centred and split into four cells of DIFFERENT sizes -- deliberately not a
 # uniform grid, because this app joins photos of differing ratios.
-# The small bottom-right cell is filled solid; filling a corner cell that
-# meets two rounded corners instead reads as one heavy blob.
+# The top-left cell is filled solid so the mark echoes the panel tab
+# sitting at the top-left of each panel in the app.
 $BoxLen    = 0.540
 $RadiusF   = 0.075
 $StrokeF   = 0.040
@@ -52,7 +52,7 @@ function Write-Icon([int]$S, [string]$Name) {
   # Clip so the fill cannot spill past the rounded outer corner.
   $g.SetClip($path)
   $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
-  $g.FillRectangle($brush, $vB, $hY, [single]($bx + $bl - $vB), [single]($bx + $bl - $hY))
+  $g.FillRectangle($brush, $bx, $bx, [single]($vT - $bx), [single]($hY - $bx))
   $brush.Dispose()
   $g.ResetClip()
 

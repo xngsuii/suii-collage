@@ -1,19 +1,21 @@
 # Icon generator for IMG Collage Editor. ASCII only:
-# Windows PowerShell 5.1 reads BOM-less files as ANSI and mangles non-ASCII.
+# Windows PowerShell 5.1 reads BOM-less files as ANSI and mangles non-ASCII,
+# which silently turns the assignments that follow a comment into $null.
 Add-Type -AssemblyName System.Drawing
 
-$Out  = 'C:\Users\User\suii-collage\icons'
-$Blue = [System.Drawing.Color]::FromArgb(0x00, 0x38, 0xFF)
+$Out = 'C:\Users\User\suii-collage\icons'
 
-# Relative geometry. The outer square covers 65% of the icon and is split
-# into four cells of DIFFERENT sizes -- deliberately not a uniform grid.
-$BoxPos    = 0.175
-$BoxLen    = 0.650
+# Relative geometry, as fractions of the icon's side. The outer square is
+# centred and split into four cells of DIFFERENT sizes -- deliberately not a
+# uniform grid, because this app joins photos of differing ratios.
+# The small bottom-right cell is filled solid; filling a corner cell that
+# meets two rounded corners instead reads as one heavy blob.
+$BoxLen    = 0.540
+$RadiusF   = 0.075
+$StrokeF   = 0.040
 $SplitVTop = 0.42
 $SplitH    = 0.45
 $SplitVBtm = 0.68
-$RadiusF   = 0.022
-$StrokeF   = 0.048
 
 function New-RoundedPath([single]$x, [single]$y, [single]$len, [single]$rad) {
   $p = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -32,26 +34,25 @@ function Write-Icon([int]$S, [string]$Name) {
   $g.SmoothingMode      = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
   $g.PixelOffsetMode    = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
   $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+  # Opaque white: iOS composites a transparent apple-touch-icon onto black.
   $g.Clear([System.Drawing.Color]::White)
 
-  $bx  = [single]($BoxPos * $S)
   $bl  = [single]($BoxLen * $S)
+  $bx  = [single](($S - $bl) / 2)
   $rad = [single]($RadiusF * $S)
   $lw  = [single]($StrokeF * $S)
   $vT  = [single]($bx + $SplitVTop * $bl)
   $vB  = [single]($bx + $SplitVBtm * $bl)
   $hY  = [single]($bx + $SplitH    * $bl)
-
   if ($rad -le 0 -or $bl -le 0 -or $lw -le 0) { throw "bad geometry: rad=$rad bl=$bl lw=$lw" }
 
   $path = New-RoundedPath $bx $bx $bl $rad
   if ($path.PointCount -lt 4) { throw "empty path for $Name" }
 
-  # Top-left cell is the only blue one, clipped so it cannot spill past
-  # the rounded outer corner.
+  # Clip so the fill cannot spill past the rounded outer corner.
   $g.SetClip($path)
-  $brush = New-Object System.Drawing.SolidBrush($Blue)
-  $g.FillRectangle($brush, $bx, $bx, ($vT - $bx), ($hY - $bx))
+  $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
+  $g.FillRectangle($brush, $vB, $hY, [single]($bx + $bl - $vB), [single]($bx + $bl - $hY))
   $brush.Dispose()
   $g.ResetClip()
 

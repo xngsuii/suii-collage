@@ -1,14 +1,15 @@
 <!-- 아이콘 원본. PNG 는 tools/make-icons.ps1 로 이 좌표 그대로 다시 그린다.
-     바깥 네모는 아이콘의 65%, 안쪽은 크기가 서로 다른 네 칸.
-     왼쪽 위 한 칸만 파랑(#0038ff) — 앱에서 칸을 선택했을 때의 표시색과 같다. -->
+     바깥 네모는 아이콘의 54%, 안쪽은 크기가 서로 다른 네 칸.
+     오른쪽 아래 작은 칸만 검게 채운다 — 모서리가 둥근 칸을 채우면
+     프레임과 뭉쳐서 한 덩어리로 보인다. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
   <rect width="1024" height="1024" fill="#ffffff"/>
   <clipPath id="box">
-    <rect x="179.2" y="179.2" width="665.6" height="665.6" rx="22.528"/>
+    <rect x="235.52" y="235.52" width="552.96" height="552.96" rx="76.8"/>
   </clipPath>
-  <rect x="179.2" y="179.2" width="279.552" height="299.52" fill="#0038ff" clip-path="url(#box)"/>
-  <g fill="none" stroke="#000000" stroke-width="49.152" stroke-linejoin="round">
-    <rect x="179.2" y="179.2" width="665.6" height="665.6" rx="22.528"/>
-    <path d="M458.752 179.2 V478.72 M179.2 478.72 H844.8 M631.808 478.72 V844.8"/>
+  <rect x="611.5328" y="484.352" width="176.9472" height="304.128" fill="#000000" clip-path="url(#box)"/>
+  <g fill="none" stroke="#000000" stroke-width="40.96" stroke-linejoin="round">
+    <rect x="235.52" y="235.52" width="552.96" height="552.96" rx="76.8"/>
+    <path d="M467.7632 235.52 V484.352 M235.52 484.352 H788.48 M611.5328 484.352 V788.48"/>
   </g>
 </svg>

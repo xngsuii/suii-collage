@@ -4,22 +4,36 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IMG Collage Editor</title>
+
+<!-- 홈 화면에 추가하면 주소창 없이 앱처럼 열린다.
+     apple- 접두사가 붙은 쪽은 iOS 전용이고, 나머지는 안드로이드·크롬용. -->
+<meta name="theme-color" content="#d2d2d2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<!-- black-translucent 은 내용이 상태 표시줄 밑으로 파고들어 상단바가 가려진다. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<!-- 홈 화면 아래 이름. 길면 iOS 가 잘라 버린다. -->
+<meta name="apple-mobile-web-app-title" content="IMG Collage">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=8">
+<link rel="icon" href="icons/favicon.png?v=8" sizes="64x64" type="image/png">
+<link rel="manifest" href="manifest.webmanifest?v=8">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@300;400;700&family=Noto+Serif+KR:wght@300;400;700&display=swap">
 <!-- ?v= 는 캐시 무효화용. 파일을 고쳐 배포할 때마다 아래 숫자를 전부 같이 올린다.
      (모듈까지 한 번에 갱신되도록 임포트 맵으로 묶어 뒀다) -->
-<link rel="stylesheet" href="css/fonts.css?v=7">
-<link rel="stylesheet" href="css/style.css?v=7">
+<link rel="stylesheet" href="css/fonts.css?v=8">
+<link rel="stylesheet" href="css/style.css?v=8">
 <script type="importmap">
 {
   "imports": {
-    "app/state.js":    "./js/state.js?v=7",
-    "app/geometry.js": "./js/geometry.js?v=7",
-    "app/render.js":   "./js/render.js?v=7",
-    "app/files.js":    "./js/files.js?v=7",
-    "app/ui.js":       "./js/ui.js?v=7"
+    "app/state.js":    "./js/state.js?v=8",
+    "app/geometry.js": "./js/geometry.js?v=8",
+    "app/render.js":   "./js/render.js?v=8",
+    "app/files.js":    "./js/files.js?v=8",
+    "app/ui.js":       "./js/ui.js?v=8"
   }
 }
 </script>
@@ -229,6 +243,6 @@
 
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
 
-<script type="module" src="js/main.js?v=7"></script>
+<script type="module" src="js/main.js?v=8"></script>
 </body>
 </html>

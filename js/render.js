@@ -45,8 +45,8 @@ export function render() {
 
   for (const layer of state.layers) drawLayer(layer);
 
-  // 캔버스 전체 효과는 사진·글자·도형을 다 그린 뒤 맨 마지막에 덧입힌다.
-  applyCanvasEffect(actx, state.canvasFx);
+  // 전체 모드일 때만 마지막에 덧입힌다. 개별 효과와 겹쳐 걸리지는 않는다.
+  applyCanvasEffect(actx, state.fxMode === 'all' ? state.canvasFx : null);
 
   drawOverlay();
 }
@@ -122,31 +122,46 @@ export function resetView() {
   state.view.scale = 1;   // 위치는 clampView 가 가운데로 되돌린다
 }
 
+/* 개별 효과는 'each' 모드에서만 산다. null 을 넘기면 원본이 그대로 돌아온다. */
+const ownFx = (o) => (state.fxMode === 'each' ? o.fx : null);
+
 /* ── 사진 칸 ─────────────────────────────── */
 
+/* 칸 가운데를 원점으로 두고 회전 → 뒤집기 순으로 좌표계를 세운 뒤 사진을 채운다.
+   panX/panY 는 화면 기준으로 저장돼 있으므로, 세운 좌표계 쪽으로 옮겨 줘야
+   돌리거나 뒤집어도 끄는 손 방향과 사진이 움직이는 방향이 어긋나지 않는다. */
 function drawPhoto(photo, rect) {
-  // 뒤집을 때는 미는 방향도 함께 뒤집힌다. 끄는 손 방향과 맞도록 미리 되돌려 둔다.
-  const b = coverBox(
-    photo.img, rect, photo.zoom,
-    photo.flipH ? -photo.panX : photo.panX,
-    photo.flipV ? -photo.panY : photo.panY,
-  );
+  const q = (photo.rot90 || 0) & 3;
+  const swap = (q & 1) === 1;
+  const fh = photo.flipH ? -1 : 1;
+  const fv = photo.flipV ? -1 : 1;
+
+  // 화면 기준 이동량을 회전한 만큼 되돌리고(−90°×q), 뒤집힌 축은 부호를 바꾼다.
+  const rot = [
+    [photo.panX, photo.panY],
+    [photo.panY, -photo.panX],
+    [-photo.panX, -photo.panY],
+    [-photo.panY, photo.panX],
+  ][q];
+  const panX = fh * rot[0];
+  const panY = fv * rot[1];
+
+  // 돌아갔으면 칸의 가로세로를 바꾼 채로 채운다. 중심이 원점인 칸으로 계산한다.
+  const cw = swap ? rect.h : rect.w;
+  const ch = swap ? rect.w : rect.h;
+  const b = coverBox(photo.img, { x: -cw / 2, y: -ch / 2, w: cw, h: ch }, photo.zoom, panX, panY);
 
   actx.save();
   actx.beginPath();
   actx.rect(rect.x, rect.y, rect.w, rect.h);
   actx.clip();
 
-  if (photo.flipH || photo.flipV) {
-    const cx = rect.x + rect.w / 2;
-    const cy = rect.y + rect.h / 2;
-    actx.translate(cx, cy);
-    actx.scale(photo.flipH ? -1 : 1, photo.flipV ? -1 : 1);
-    actx.translate(-cx, -cy);
-  }
+  actx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+  if (q) actx.rotate((q * Math.PI) / 2);
+  if (fh < 0 || fv < 0) actx.scale(fh, fv);
 
   // 효과가 없으면 원본 이미지가 그대로 돌아온다.
-  actx.drawImage(filtered(photo, photo.img, photo.fx), b.x, b.y, b.w, b.h);
+  actx.drawImage(filtered(photo, photo.img, ownFx(photo)), b.x, b.y, b.w, b.h);
   actx.restore();
 }
 
@@ -225,7 +240,7 @@ function drawSticker(layer) {
 
   actx.shadowColor = 'transparent';
   // 아웃라인은 원본 알파를 따라야 하므로 위에서 원본을 쓰고, 몸통만 효과를 먹인다.
-  actx.drawImage(filtered(layer, layer.img, layer.fx), x, y, w, h);
+  actx.drawImage(filtered(layer, layer.img, ownFx(layer)), x, y, w, h);
   actx.restore();
 }
 

@@ -77,7 +77,10 @@ export const state = {
   // 미리보기에서 글자를 고쳐 쓰는 중인 텍스트 레이어. 캔버스에는 글자를 그리지 않는다.
   editingId: null,
 
-  // 캔버스 전체에 거는 효과. 사진마다 따로 거는 fx 와 별개로 맨 마지막에 덧입힌다.
+  /* 효과를 거는 방식. 둘은 함께 걸리지 않고 하나만 산다.
+     'each' — 사진·스티커마다 따로 건 효과만 적용
+     'all'  — 개별 효과는 무시하고 캔버스 전체 효과만 적용 */
+  fxMode: 'each',
   canvasFx: newFx(),
 
   // 정렬을 돕는 안내선. 미리보기에만 그리고 내보낸 이미지에는 남지 않는다.
@@ -165,7 +168,8 @@ export function movePhoto(from, to) {
 /* ── 사진과 레이어 생성 ──────────────────── */
 
 export function makePhoto(img) {
-  return { img, panX: 0, panY: 0, zoom: 1, flipH: false, flipV: false, fx: newFx() };
+  // rot90 은 시계 방향 90도 횟수(0~3).
+  return { img, panX: 0, panY: 0, zoom: 1, rot90: 0, flipH: false, flipV: false, fx: newFx() };
 }
 
 export function makeText(cx, cy, size) {

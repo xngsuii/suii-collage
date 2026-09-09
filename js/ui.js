@@ -119,6 +119,9 @@ export function refreshThumbs() {
       const img = document.createElement('img');
       img.src = photo.img.src;
       img.alt = '';
+      // 브라우저 기본 이미지 끌기가 켜져 있으면 누르는 순간 포인터가 취소돼
+      // 순서 바꾸기가 시작조차 못 한다.
+      img.draggable = false;
       b.appendChild(img);
     } else {
       b.textContent = '+';
@@ -140,22 +143,11 @@ export function refreshThumbs() {
 let thumbDrag = null;
 let thumbClickBlocked = false;
 
+/* setPointerCapture 는 쓰지 않는다. 컨테이너가 포인터를 잡으면 pointerup 이 그쪽으로
+   가면서 click 이 버튼 대신 컨테이너로 떨어져, 썸네일 클릭 선택이 통째로 죽는다.
+   대신 끄는 동안만 document 에 귀를 달아 밖으로 나가도 따라오게 한다. */
 function initThumbReorder() {
-  thumbsEl.addEventListener('pointerdown', (e) => {
-    const el = e.target.closest('.thumb');
-    if (!el) return;
-    const items = [...thumbsEl.children];
-    if (items.length < 2) return;
-    const index = items.indexOf(el);
-    thumbDrag = {
-      items, el, index, target: index, moved: false,
-      slots: items.map((it) => ({ x: it.offsetLeft, y: it.offsetTop })),
-      startX: e.clientX, startY: e.clientY,
-    };
-    try { thumbsEl.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
-  });
-
-  thumbsEl.addEventListener('pointermove', (e) => {
+  const onMove = (e) => {
     if (!thumbDrag) return;
     const dx = e.clientX - thumbDrag.startX;
     const dy = e.clientY - thumbDrag.startY;
@@ -166,6 +158,7 @@ function initThumbReorder() {
       thumbDrag.el.classList.add('is-dragging');
       thumbsEl.classList.add('is-reordering');
     }
+    e.preventDefault();
     thumbDrag.el.style.transform = `translate(${dx}px, ${dy}px)`;
 
     const target = nearestSlot(thumbDrag, dx, dy);
@@ -173,10 +166,14 @@ function initThumbReorder() {
       thumbDrag.target = target;
       shiftThumbs();
     }
-  });
+  };
 
   const finish = () => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', finish);
+    document.removeEventListener('pointercancel', finish);
     if (!thumbDrag) return;
+
     const { moved, index, target, el, items } = thumbDrag;
     thumbDrag = null;
 
@@ -186,16 +183,31 @@ function initThumbReorder() {
     if (!moved) return;                     // 눌렀다 뗀 것 — click 이 알아서 처리한다
 
     // 끌었다면 이어서 오는 click 은 무시한다(빈 칸이면 파일 창이 열려 버린다).
+    // 터치에서는 click 이 조금 늦게 오므로 넉넉히 기다렸다 푼다.
     thumbClickBlocked = true;
-    setTimeout(() => { thumbClickBlocked = false; }, 0);
+    setTimeout(() => { thumbClickBlocked = false; }, 400);
 
     if (index === target) return;
     movePhoto(index, target);
     update();
   };
 
-  thumbsEl.addEventListener('pointerup', finish);
-  thumbsEl.addEventListener('pointercancel', finish);
+  thumbsEl.addEventListener('pointerdown', (e) => {
+    if (e.button != null && e.button !== 0) return;   // 왼쪽 버튼만
+    const el = e.target.closest('.thumb');
+    if (!el) return;
+    const items = [...thumbsEl.children];
+    if (items.length < 2) return;
+    const index = items.indexOf(el);
+    thumbDrag = {
+      items, el, index, target: index, moved: false,
+      slots: items.map((it) => ({ x: it.offsetLeft, y: it.offsetTop })),
+      startX: e.clientX, startY: e.clientY,
+    };
+    document.addEventListener('pointermove', onMove, { passive: false });
+    document.addEventListener('pointerup', finish);
+    document.addEventListener('pointercancel', finish);
+  });
 }
 
 /* 끄는 칸의 지금 위치에서 가장 가까운 자리를 고른다. */
@@ -502,6 +514,8 @@ function cellProps(index) {
     <div class="switch-pair">
       ${switchRow('좌우 반전', 'flipH', photo.flipH)}
       ${switchRow('상하 반전', 'flipV', photo.flipV)}
+      <button class="mini-btn rotate-btn" data-action="rotate90" type="button"
+        title="시계 방향으로 90° 회전">↻ 회전</button>
     </div>
     <div class="field-row">
       <button class="btn" data-action="fillCell" type="button">교체</button>
@@ -510,20 +524,22 @@ function cellProps(index) {
     <button class="btn btn-ghost" data-action="removePhoto" type="button">이 사진 빼기</button>`;
 }
 
-/* 오른쪽에 스위치가 붙은 한 줄 */
+/* 오른쪽에 스위치가 붙은 한 줄.
+   label 로 줄 전체를 감싸면 글자를 눌러도 토글이 되므로, label 은 스위치에만 씌운다. */
 function switchRow(label, path, on) {
-  return `<label class="switch-row">
+  return `<div class="switch-row">
     <span>${label}</span>
-    <input type="checkbox" data-path="${path}" ${on ? 'checked' : ''}>
-    <i class="switch"></i>
-  </label>`;
+    <label class="switch-hit">
+      <input type="checkbox" data-path="${path}" ${on ? 'checked' : ''}>
+      <i class="switch"></i>
+    </label>
+  </div>`;
 }
 
 /* ── 효과 ────────────────────────────────── */
 
-/* 효과를 고른 칸에만 걸지, 캔버스 전체에 걸지.
-   칸을 고르지 않아도 손댈 수 있도록 사진 블록에 늘 띄워 둔다. */
-let fxScope = 'self';        // 'self' | 'canvas'
+/* 효과 방식(state.fxMode)은 둘 중 하나만 산다 — 사진마다 따로 걸거나, 캔버스 전체에 걸거나.
+   칸을 고르지 않아도 방식을 바꿀 수 있도록 사진 블록에 늘 띄워 둔다. */
 let fxKey = '';
 
 /* 그레인은 다른 효과 위에 겹쳐 쓰는 것이라 목록에서 빼고 따로 조절하게 뒀다.
@@ -538,35 +554,40 @@ function effectControls(fx, prefix) {
     ${slider('필름 그레인', `${prefix}.grain`, fx.grain, 0, 1, 0.01)}`;
 }
 
+/* 전체 모드에서는 요소마다 건 효과가 적용되지 않는다. 값은 그대로 두고 알려만 준다. */
+const stickerFxNote = () => (state.fxMode === 'all'
+  ? '<p class="block-note">지금은 <b>전체</b> 모드라 이 설정은 적용되지 않습니다. 사진 블록에서 <b>사진 선택</b>으로 바꾸면 살아납니다.</p>'
+  : '');
+
 function selectedPhoto() {
   const sel = state.selection;
   return sel?.kind === 'cell' ? state.photos[sel.index] : null;
 }
 
 export function refreshPhotoFx(force = false) {
-  const onCanvas = fxScope === 'canvas';
+  const all = state.fxMode === 'all';
   const photo = selectedPhoto();
-  const fx = onCanvas ? state.canvasFx : photo?.fx;
+  const fx = all ? state.canvasFx : photo?.fx;
 
   // 고른 대상이나 효과 종류가 바뀔 때만 다시 만든다(입력 중 초점 유지).
-  const key = `${fxScope}|${onCanvas ? '-' : state.selection?.index ?? -1}|${fx?.mode ?? '-'}`;
+  const key = `${state.fxMode}|${all ? '-' : state.selection?.index ?? -1}|${fx?.mode ?? '-'}`;
   if (!force && key === fxKey) { syncPropOutputs(); return; }
   fxKey = key;
 
-  const scope = `<div class="seg">
-    ${[['self', '이 사진'], ['canvas', '전체']].map(([v, t]) => `
-      <button class="seg-btn ${fxScope === v ? 'is-active' : ''}" data-fxscope="${v}" type="button">${t}</button>`).join('')}
+  const modeSeg = `<div class="seg">
+    ${[['each', '사진 선택'], ['all', '전체']].map(([v, t]) => `
+      <button class="seg-btn ${state.fxMode === v ? 'is-active' : ''}" data-fxmode="${v}" type="button">${t}</button>`).join('')}
   </div>`;
 
-  const body = fx
-    ? effectControls(fx, onCanvas ? 'canvasFx' : 'fx')
-    : '<p class="block-note">효과를 걸 칸을 먼저 고르세요.</p>';
-
-  const note = onCanvas
-    ? '<p class="block-note">사진·글자·도형을 다 그린 뒤 캔버스 전체에 덧입힙니다.</p>'
+  const note = all
+    ? '<p class="block-note">사진·글자·도형을 다 그린 뒤 캔버스 전체에 덧입힙니다. 사진마다 걸어 둔 효과는 적용되지 않습니다.</p>'
     : '';
 
-  photoFxEl.innerHTML = group('효과', scope + note + body);
+  const body = fx
+    ? effectControls(fx, all ? 'canvasFx' : 'fx')
+    : '<p class="block-note">효과를 걸 칸을 먼저 고르세요.</p>';
+
+  photoFxEl.innerHTML = group('효과', modeSeg + note + body);
   paintAllRanges(photoFxEl);
 }
 
@@ -686,7 +707,7 @@ function stickerProps(l) {
         ${colorField('선 색상', 'outline.color', l.outline.color)}
         ${slider('선 굵기', 'outline.width', l.outline.width, 1, 80, 1)}` : ''}`)}
 
-    ${group('효과', effectControls(l.fx, 'fx'))}
+    ${group('효과', stickerFxNote() + effectControls(l.fx, 'fx'))}
     ${commonGroups(l)}`;
 }
 
@@ -892,9 +913,11 @@ function onNumCommit(e) {
 }
 
 function onPropClick(e, actions) {
-  const scopeBtn = e.target.closest('[data-fxscope]');
-  if (scopeBtn) {
-    fxScope = scopeBtn.dataset.fxscope;
+  const modeBtn = e.target.closest('[data-fxmode]');
+  if (modeBtn) {
+    state.fxMode = modeBtn.dataset.fxmode;
+    render();                 // 개별 효과와 전체 효과가 서로 자리를 바꾼다
+    refreshProps(true);
     refreshPhotoFx(true);
     return;
   }
@@ -928,6 +951,14 @@ function onPropClick(e, actions) {
 
   if (act === 'fillCell') return actions.fillCell(sel.index);
   if (act === 'resetPan' && target) { target.panX = 0; target.panY = 0; target.zoom = 1; update(); return; }
+  if (act === 'rotate90' && target) {
+    target.rot90 = ((target.rot90 || 0) + 1) & 3;
+    // 원본 그대로 모드에서는 칸 모양까지 바뀌므로, 새 칸을 잡은 뒤에 이동 한계를 다시 건다.
+    render();
+    clampPan(target, getLayout().rects[sel.index]);
+    update();
+    return;
+  }
   if (act === 'resetRot' && target) { target.rot = 0; render(); refreshProps(true); return; }
   if (act === 'removePhoto') {
     // 템플릿 모드에서는 뒤 사진이 앞으로 밀리지 않도록 자리만 비운다.

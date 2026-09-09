@@ -245,10 +245,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  cursor: pointer;
+  user-select: none;
 }
 
 .switch-row > span { flex: 1; white-space: nowrap; }
+
+/* 누르는 곳은 스위치뿐이다. 글자를 눌러서는 켜지지 않는다. */
+.switch-hit { flex: none; display: inline-flex; cursor: pointer; }
 
 /* 진짜 체크박스는 숨기지 않고 투명하게 겹쳐 둔다(키보드 초점이 살아 있도록). */
 .switch-row input { position: absolute; opacity: 0; width: 0; height: 0; }
@@ -281,11 +284,28 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .switch-row input:checked + .switch::after { transform: translateX(16px); }
 .switch-row input:focus-visible + .switch { outline: 2px solid var(--ink); outline-offset: 2px; }
 
-/* 반전 토글 두 개를 한 줄에 나란히 */
-.switch-pair { display: flex; gap: 12px; }
-.switch-pair .switch-row { flex: 1; min-width: 0; }
+/* 좌우 · 상하 · 회전을 한 줄에, 셋이 정확히 같은 너비로.
+   flex 로는 버튼의 내재 너비가 끼어들어 셋이 어긋난다. minmax(0, 1fr) 이 확실하다. */
+.switch-pair {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 10px;
+}
+
+.switch-pair .switch-row { gap: 6px; }
 .switch-pair .switch-row > span { flex: none; }
 
+/* 회전은 상태가 아니라 누를 때마다 도는 동작이라 버튼으로 둔다. */
+.rotate-btn {
+  padding: 4px 6px;
+  border-color: var(--line);
+  color: var(--ink-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.rotate-btn:active { background: var(--ink); border-color: var(--ink); color: #fff; }
 
 /* 폰트 선택기 오른쪽에 붙는 굵기 선택 */
 .font-row { display: flex; align-items: center; gap: 6px; }
@@ -580,6 +600,10 @@ input[type="range"]::-moz-range-thumb {
   background: var(--field);
   cursor: grab;
   touch-action: none;
+  /* 기본 이미지·텍스트 끌기가 시작되면 포인터가 취소돼 순서 바꾸기가 죽는다. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
   transition: transform 0.18s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
@@ -594,7 +618,15 @@ input[type="range"]::-moz-range-thumb {
 
 .thumbs.is-reordering .thumb { cursor: grabbing; }
 
-.thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 포인터는 칸(button)이 다 받는다. 안의 이미지가 끌기 대상이 되지 않게 한다. */
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
 .thumb:hover { border-color: var(--ink); }
 .thumb.is-active { border-color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
 

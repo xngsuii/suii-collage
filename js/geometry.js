@@ -4,6 +4,13 @@ import { state, template, BASE_SIZE, MAX_SIZE, MAX_AREA } from 'app/state.js';
 
 const EPS = 1e-6;
 
+/* 90/270도로 돌린 사진은 가로세로가 뒤바뀐 것으로 친다.
+   원본 그대로 모드에서 칸 모양이 회전을 따라가고, 칸을 정확히 채우게 된다. */
+export function photoSize(p) {
+  const swap = ((p.rot90 || 0) & 1) === 1;
+  return { w: swap ? p.img.height : p.img.width, h: swap ? p.img.width : p.img.height };
+}
+
 /* 캔버스 크기와 각 사진 칸의 픽셀 좌표를 계산한다. */
 export function computeLayout() {
   const layout = state.mode === 'template' ? templateLayout() : autoLayout();
@@ -51,21 +58,23 @@ function autoLayout() {
 
   const rects = [];
 
+  const sizes = photos.map(photoSize);
+
   if (state.direction === 'h') {
-    const H0 = Math.max(...photos.map((p) => p.img.height));
+    const H0 = Math.max(...sizes.map((s) => s.h));
     let x = m;
-    for (const p of photos) {
-      const w = p.img.width * (H0 / p.img.height);
+    for (const s of sizes) {
+      const w = s.w * (H0 / s.h);
       rects.push({ x, y: m, w, h: H0 });
       x += w + gap;
     }
     return { W: Math.round(x - gap + m), H: Math.round(H0 + m * 2), rects };
   }
 
-  const W0 = Math.max(...photos.map((p) => p.img.width));
+  const W0 = Math.max(...sizes.map((s) => s.w));
   let y = m;
-  for (const p of photos) {
-    const h = p.img.height * (W0 / p.img.width);
+  for (const s of sizes) {
+    const h = s.h * (W0 / s.w);
     rects.push({ x: m, y, w: W0, h });
     y += h + gap;
   }
@@ -101,9 +110,17 @@ export function coverBox(img, rect, zoom, panX, panY) {
 }
 
 export function clampPan(photo, rect) {
-  const scale = Math.max(rect.w / photo.img.width, rect.h / photo.img.height) * photo.zoom;
-  const maxX = Math.max(0, (photo.img.width * scale - rect.w) / 2);
-  const maxY = Math.max(0, (photo.img.height * scale - rect.h) / 2);
+  // 돌아간 상태에서는 칸의 가로세로를 바꿔 놓고 계산한다.
+  const swap = ((photo.rot90 || 0) & 1) === 1;
+  const cw = swap ? rect.h : rect.w;
+  const ch = swap ? rect.w : rect.h;
+
+  const scale = Math.max(cw / photo.img.width, ch / photo.img.height) * photo.zoom;
+  let maxX = Math.max(0, (photo.img.width * scale - cw) / 2);
+  let maxY = Math.max(0, (photo.img.height * scale - ch) / 2);
+  // panX/panY 는 화면 기준이라, 로컬 축이 돌아간 만큼 한계도 서로 바뀐다.
+  if (swap) [maxX, maxY] = [maxY, maxX];
+
   photo.panX = Math.min(maxX, Math.max(-maxX, photo.panX));
   photo.panY = Math.min(maxY, Math.max(-maxY, photo.panY));
 }

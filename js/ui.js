@@ -2,7 +2,7 @@
 
 import {
   state, RATIOS, TEMPLATES, FONTS, KIND_LABEL, WEIGHT_LABEL, findFont,
-  template, selectedLayer, removeLayer, duplicateLayer, resizeCanvas, applyRatio,
+  template, selectedLayer, removeLayer, duplicateLayer, resizeCanvas, applyRatio, movePhoto,
 } from 'app/state.js';
 import { render, getLayout, resetView } from 'app/render.js';
 import { clampPan } from 'app/geometry.js';
@@ -13,6 +13,7 @@ const propsEl = $('props');
 const photoPropsEl = $('photoProps');
 const layerListEl = $('layerList');
 const thumbsEl = $('thumbs');
+const photoFxEl = $('photoFx');
 
 /* ── 슬라이더 채움 표시 ──────────────────── */
 
@@ -86,6 +87,7 @@ export const photoCount = () => state.photos.filter(Boolean).length;
 export function update() {
   render();
   refreshProps();
+  refreshPhotoFx();
   refreshThumbs();
   refreshLayerList();
   refreshMeta();
@@ -123,12 +125,104 @@ export function refreshThumbs() {
     }
 
     b.addEventListener('click', () => {
+      if (thumbClickBlocked) return;        // 방금 끌어서 순서를 바꾼 참이다
       if (!photo) return panelActions?.fillCell(i);
       state.selection = { kind: 'cell', index: i };
       update();
     });
     thumbsEl.appendChild(b);
   }
+}
+
+/* 썸네일을 끌어 사진 순서를 바꾼다.
+   레이어 목록과 달리 격자라서 한 칸 밀릴 때 줄이 바뀌기도 한다.
+   그래서 칸의 실제 자리를 재 두고 '어느 자리로 가는지'를 좌표로 계산한다. */
+let thumbDrag = null;
+let thumbClickBlocked = false;
+
+function initThumbReorder() {
+  thumbsEl.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.thumb');
+    if (!el) return;
+    const items = [...thumbsEl.children];
+    if (items.length < 2) return;
+    const index = items.indexOf(el);
+    thumbDrag = {
+      items, el, index, target: index, moved: false,
+      slots: items.map((it) => ({ x: it.offsetLeft, y: it.offsetTop })),
+      startX: e.clientX, startY: e.clientY,
+    };
+    try { thumbsEl.setPointerCapture(e.pointerId); } catch { /* 합성 이벤트 등 */ }
+  });
+
+  thumbsEl.addEventListener('pointermove', (e) => {
+    if (!thumbDrag) return;
+    const dx = e.clientX - thumbDrag.startX;
+    const dy = e.clientY - thumbDrag.startY;
+
+    if (!thumbDrag.moved) {
+      if (Math.hypot(dx, dy) < 5) return;   // 그냥 누른 것과 구분
+      thumbDrag.moved = true;
+      thumbDrag.el.classList.add('is-dragging');
+      thumbsEl.classList.add('is-reordering');
+    }
+    thumbDrag.el.style.transform = `translate(${dx}px, ${dy}px)`;
+
+    const target = nearestSlot(thumbDrag, dx, dy);
+    if (target !== thumbDrag.target) {
+      thumbDrag.target = target;
+      shiftThumbs();
+    }
+  });
+
+  const finish = () => {
+    if (!thumbDrag) return;
+    const { moved, index, target, el, items } = thumbDrag;
+    thumbDrag = null;
+
+    el.classList.remove('is-dragging');
+    thumbsEl.classList.remove('is-reordering');
+    for (const it of items) it.style.transform = '';
+    if (!moved) return;                     // 눌렀다 뗀 것 — click 이 알아서 처리한다
+
+    // 끌었다면 이어서 오는 click 은 무시한다(빈 칸이면 파일 창이 열려 버린다).
+    thumbClickBlocked = true;
+    setTimeout(() => { thumbClickBlocked = false; }, 0);
+
+    if (index === target) return;
+    movePhoto(index, target);
+    update();
+  };
+
+  thumbsEl.addEventListener('pointerup', finish);
+  thumbsEl.addEventListener('pointercancel', finish);
+}
+
+/* 끄는 칸의 지금 위치에서 가장 가까운 자리를 고른다. */
+function nearestSlot({ slots, index }, dx, dy) {
+  const px = slots[index].x + dx;
+  const py = slots[index].y + dy;
+  let best = index;
+  let lo = Infinity;
+  slots.forEach((s, i) => {
+    const d = (s.x - px) ** 2 + (s.y - py) ** 2;
+    if (d < lo) { lo = d; best = i; }
+  });
+  return best;
+}
+
+/* 끄는 칸을 뺀 나머지가 한 자리씩 밀린다. 줄이 바뀌는 경우도 좌표 차이로 처리된다. */
+function shiftThumbs() {
+  const { items, slots, index, target, el } = thumbDrag;
+  items.forEach((it, i) => {
+    if (it === el) return;
+    let to = i;
+    if (index < target && i > index && i <= target) to = i - 1;
+    else if (index > target && i >= target && i < index) to = i + 1;
+    const dx = slots[to].x - slots[i].x;
+    const dy = slots[to].y - slots[i].y;
+    it.style.transform = dx || dy ? `translate(${dx}px, ${dy}px)` : '';
+  });
 }
 
 function refreshMeta() {
@@ -180,10 +274,13 @@ export function initLeftPanel(actions) {
 
   $('addPhoto').addEventListener('click', actions.addPhoto);
 
-  photoPropsEl.addEventListener("input", onPropInput);
-  photoPropsEl.addEventListener("change", onNumCommit);
-  photoPropsEl.addEventListener("click", (e) => onPropClick(e, actions));
-  trackGroupToggles(photoPropsEl);
+  for (const el of [photoPropsEl, photoFxEl]) {
+    el.addEventListener('input', onPropInput);
+    el.addEventListener('change', onNumCommit);
+    el.addEventListener('click', (e) => onPropClick(e, actions));
+    trackGroupToggles(el);
+  }
+  initThumbReorder();
 
   syncModeBlocks();
   syncCanvasFields();
@@ -402,14 +499,15 @@ function cellProps(index) {
       <button class="btn" data-action="fillCell" type="button">사진 넣기</button>`;
   }
   return `${slider('확대', 'zoom', photo.zoom, 1, 4, 0.01)}
-    ${switchRow('좌우 반전', 'flipH', photo.flipH)}
-    ${switchRow('상하 반전', 'flipV', photo.flipV)}
+    <div class="switch-pair">
+      ${switchRow('좌우 반전', 'flipH', photo.flipH)}
+      ${switchRow('상하 반전', 'flipV', photo.flipV)}
+    </div>
     <div class="field-row">
       <button class="btn" data-action="fillCell" type="button">교체</button>
       <button class="btn" data-action="resetPan" type="button">맞춤</button>
     </div>
-    <button class="btn btn-ghost" data-action="removePhoto" type="button">이 사진 빼기</button>
-    ${effectGroup(photo)}`;
+    <button class="btn btn-ghost" data-action="removePhoto" type="button">이 사진 빼기</button>`;
 }
 
 /* 오른쪽에 스위치가 붙은 한 줄 */
@@ -423,17 +521,53 @@ function switchRow(label, path, on) {
 
 /* ── 효과 ────────────────────────────────── */
 
-/* 그레인은 다른 효과 위에 겹쳐 쓰는 것이라 목록에서 빼고 따로 조절하게 뒀다. */
-function effectGroup(o) {
-  const fx = o.fx;
+/* 효과를 고른 칸에만 걸지, 캔버스 전체에 걸지.
+   칸을 고르지 않아도 손댈 수 있도록 사진 블록에 늘 띄워 둔다. */
+let fxScope = 'self';        // 'self' | 'canvas'
+let fxKey = '';
+
+/* 그레인은 다른 효과 위에 겹쳐 쓰는 것이라 목록에서 빼고 따로 조절하게 뒀다.
+   강도는 효과마다 따로 저장하므로 경로에 현재 효과 이름이 들어간다. */
+function effectControls(fx, prefix) {
   const btns = EFFECTS.map((e) => `
     <button class="seg-btn ${fx.mode === e.id ? 'is-active' : ''}"
-      data-set="fx.mode" data-value="${e.id}" type="button">${e.label}</button>`).join('');
+      data-set="${prefix}.mode" data-value="${e.id}" type="button">${e.label}</button>`).join('');
 
-  return group('효과', `
-    <div class="seg seg-wrap">${btns}</div>
-    ${fx.mode === 'none' ? '' : slider('강도', 'fx.amount', fx.amount, 0, 1, 0.01)}
-    ${slider('필름 그레인', 'fx.grain', fx.grain, 0, 1, 0.01)}`);
+  return `<div class="seg seg-wrap">${btns}</div>
+    ${fx.mode === 'none' ? '' : slider('강도', `${prefix}.amounts.${fx.mode}`, fx.amounts[fx.mode], 0, 1, 0.01)}
+    ${slider('필름 그레인', `${prefix}.grain`, fx.grain, 0, 1, 0.01)}`;
+}
+
+function selectedPhoto() {
+  const sel = state.selection;
+  return sel?.kind === 'cell' ? state.photos[sel.index] : null;
+}
+
+export function refreshPhotoFx(force = false) {
+  const onCanvas = fxScope === 'canvas';
+  const photo = selectedPhoto();
+  const fx = onCanvas ? state.canvasFx : photo?.fx;
+
+  // 고른 대상이나 효과 종류가 바뀔 때만 다시 만든다(입력 중 초점 유지).
+  const key = `${fxScope}|${onCanvas ? '-' : state.selection?.index ?? -1}|${fx?.mode ?? '-'}`;
+  if (!force && key === fxKey) { syncPropOutputs(); return; }
+  fxKey = key;
+
+  const scope = `<div class="seg">
+    ${[['self', '이 사진'], ['canvas', '전체']].map(([v, t]) => `
+      <button class="seg-btn ${fxScope === v ? 'is-active' : ''}" data-fxscope="${v}" type="button">${t}</button>`).join('')}
+  </div>`;
+
+  const body = fx
+    ? effectControls(fx, onCanvas ? 'canvasFx' : 'fx')
+    : '<p class="block-note">효과를 걸 칸을 먼저 고르세요.</p>';
+
+  const note = onCanvas
+    ? '<p class="block-note">사진·글자·도형을 다 그린 뒤 캔버스 전체에 덧입힙니다.</p>'
+    : '';
+
+  photoFxEl.innerHTML = group('효과', scope + note + body);
+  paintAllRanges(photoFxEl);
 }
 
 function layerProps(l) {
@@ -552,7 +686,7 @@ function stickerProps(l) {
         ${colorField('선 색상', 'outline.color', l.outline.color)}
         ${slider('선 굵기', 'outline.width', l.outline.width, 1, 80, 1)}` : ''}`)}
 
-    ${effectGroup(l)}
+    ${group('효과', effectControls(l.fx, 'fx'))}
     ${commonGroups(l)}`;
 }
 
@@ -656,10 +790,13 @@ function propTarget() {
   return sel.kind === 'cell' ? state.photos[sel.index] : selectedLayer();
 }
 
+/* 캔버스 전체 효과는 고른 사진이 아니라 state 에 저장한다. */
+const targetFor = (path) => (path.startsWith('canvasFx.') ? state : propTarget());
+
 function onPropInput(e) {
   const el = e.target.closest('[data-path]');
   if (!el) return;
-  const target = propTarget();
+  const target = targetFor(el.dataset.path);
   if (!target) return;
 
   // HEX 입력은 유효할 때만 반영하고 옆 견본을 맞춘다.
@@ -716,6 +853,8 @@ function onPropInput(e) {
 
 /* 값 하나를 바꾸면 따라 움직여야 하는 것들 */
 function applyDerived(target, path) {
+  // 캔버스 전체 설정(state)은 사진이 아니므로 따라 움직일 게 없다.
+  if (target === state) return;
   if (state.selection?.kind === 'cell') {
     clampPan(target, getLayout().rects[state.selection.index]);
   }
@@ -732,7 +871,7 @@ function applyDerived(target, path) {
 function onNumCommit(e) {
   const el = e.target.closest('.num[data-path]');
   if (!el) return;
-  const target = propTarget();
+  const target = targetFor(el.dataset.path);
   if (!target) return;
 
   const min = Number(el.min);
@@ -753,16 +892,26 @@ function onNumCommit(e) {
 }
 
 function onPropClick(e, actions) {
+  const scopeBtn = e.target.closest('[data-fxscope]');
+  if (scopeBtn) {
+    fxScope = scopeBtn.dataset.fxscope;
+    refreshPhotoFx(true);
+    return;
+  }
+
   const setBtn = e.target.closest('[data-set]');
   const toggleBtn = e.target.closest('[data-toggle]');
   const actionBtn = e.target.closest('[data-action]');
   const target = propTarget();
 
-  if (setBtn && target) {
+  if (setBtn) {
+    const owner = targetFor(setBtn.dataset.set);
+    if (!owner) return;
     const raw = setBtn.dataset.value;
-    setPath(target, setBtn.dataset.set, setBtn.dataset.num ? Number(raw) : raw);
+    setPath(owner, setBtn.dataset.set, setBtn.dataset.num ? Number(raw) : raw);
     render();
     refreshProps(true);
+    refreshPhotoFx(true);
     return;
   }
   if (toggleBtn && target) {
@@ -809,9 +958,10 @@ function onPropClick(e, actions) {
 }
 
 function syncPropOutputs() {
-  const target = propTarget();
-  if (!target) return;
-  for (const el of [...propsEl.querySelectorAll('[data-path]'), ...photoPropsEl.querySelectorAll('[data-path]')]) {
+  const all = [propsEl, photoPropsEl, photoFxEl].flatMap((root) => [...root.querySelectorAll('[data-path]')]);
+  for (const el of all) {
+    const target = targetFor(el.dataset.path);
+    if (!target) continue;
     const stored = getPath(target, el.dataset.path);
     if (stored === undefined) continue;
     const v = el.dataset.scale ? stored / Number(el.dataset.scale) : stored;

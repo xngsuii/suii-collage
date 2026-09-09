@@ -1,6 +1,6 @@
 /* 상태와 상수 정의. 다른 모듈은 여기서 state를 읽고 쓴다. */
 
-import { newFx } from 'app/effects.js';
+import { newFx, cloneFx, clearFxCache } from 'app/effects.js';
 
 export const RATIOS = [
   { id: '1:1',  w: 1,  h: 1  },
@@ -77,6 +77,9 @@ export const state = {
   // 미리보기에서 글자를 고쳐 쓰는 중인 텍스트 레이어. 캔버스에는 글자를 그리지 않는다.
   editingId: null,
 
+  // 캔버스 전체에 거는 효과. 사진마다 따로 거는 fx 와 별개로 맨 마지막에 덧입힌다.
+  canvasFx: newFx(),
+
   // 정렬을 돕는 안내선. 미리보기에만 그리고 내보낸 이미지에는 남지 않는다.
   grid: { show: false, snap: false, cols: 3, rows: 3 },
 
@@ -108,9 +111,12 @@ export function duplicateLayer(id) {
   if (i < 0) return null;
   const src = state.layers[i];
   const copy = { ...src, id: newId(), cx: src.cx + 40, cy: src.cy + 40 };
-  for (const key of ['bg', 'fill', 'stroke', 'outline', 'shadow', 'fx']) {
+  for (const key of ['bg', 'fill', 'stroke', 'outline', 'shadow']) {
     if (src[key]) copy[key] = { ...src[key] };
   }
+  // fx 는 강도 표가 중첩돼 있고, 구워 둔 캔버스는 함께 쓰면 안 된다.
+  if (src.fx) copy.fx = cloneFx(src.fx);
+  clearFxCache(copy);
   state.layers.splice(i + 1, 0, copy);
   return copy;
 }
@@ -140,6 +146,20 @@ export function applyRatio(rw, rh) {
     state.canvasH = longSide;
     state.canvasW = Math.max(80, Math.round(longSide * rw / rh));
   }
+}
+
+/* 썸네일을 끌어 순서를 바꿀 때 쓴다. 템플릿 모드에는 빈 자리가 있을 수 있어
+   먼저 자리를 채운 뒤 옮기고, 뒤에 남은 빈 자리는 정리한다. */
+export function movePhoto(from, to) {
+  const need = Math.max(state.photos.length, from + 1, to + 1);
+  while (state.photos.length < need) state.photos.push(null);
+
+  const [photo] = state.photos.splice(from, 1);
+  state.photos.splice(to, 0, photo);
+  while (state.photos.length && state.photos[state.photos.length - 1] == null) state.photos.pop();
+
+  // 고른 칸이 사진을 따라가게 한다.
+  if (state.selection?.kind === 'cell') state.selection = { kind: 'cell', index: to };
 }
 
 /* ── 사진과 레이어 생성 ──────────────────── */

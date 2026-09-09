@@ -17,8 +17,20 @@ export const EFFECTS = [
 ];
 
 /* 처음 골랐을 때 이름값을 하도록 강도를 꽤 높게 잡아 둔다.
-   0.6 쯤이면 '흑백'을 골라도 색이 남아 있어 고른 대로 안 보인다. */
-export const newFx = () => ({ mode: 'none', amount: 0.8, grain: 0 });
+   0.6 쯤이면 '흑백'을 골라도 색이 남아 있어 고른 대로 안 보인다.
+   강도는 효과마다 따로 기억한다 — 흑백을 0.1 로 두고 웜을 0.5 로 올린 뒤
+   다시 흑백을 누르면 0.1 로 돌아온다. */
+const DEFAULT_AMOUNT = 0.8;
+
+export const newFx = () => ({
+  mode: 'none',
+  amounts: Object.fromEntries(EFFECTS.filter((e) => e.id !== 'none').map((e) => [e.id, DEFAULT_AMOUNT])),
+  grain: 0,
+});
+
+export const cloneFx = (fx) => ({ ...fx, amounts: { ...fx.amounts } });
+
+export const amountOf = (fx) => fx.amounts?.[fx.mode] ?? DEFAULT_AMOUNT;
 
 /* 그레인은 다른 효과와 겹쳐 쓰는 것이라 따로 둔다. */
 export const hasEffect = (fx) => !!fx && (fx.mode !== 'none' || fx.grain > 0);
@@ -36,27 +48,62 @@ const sizeLimit = () => (fullRes ? EXPORT_MAX : PREVIEW_MAX);
 export function filtered(owner, img, fx) {
   if (!hasEffect(fx) || !img.width) return img;
 
-  const key = `${fx.mode}|${fx.amount}|${fx.grain}|${sizeLimit()}`;
+  const key = `${fx.mode}|${amountOf(fx)}|${fx.grain}|${sizeLimit()}`;
   if (owner._fxImg === img && owner._fxKey === key && owner._fxCanvas) return owner._fxCanvas;
 
-  const canvas = bake(img, fx);
+  // 캔버스를 매번 새로 만들면 슬라이더를 끄는 동안 쓰레기가 쌓인다. 하나를 계속 쓴다.
+  // 다만 willReadFrequently 는 처음 만들 때만 먹으므로 필요가 달라지면 새로 만든다.
+  const needRead = fx.mode === 'poster';
+  if (!owner._fxCanvas || owner._fxRead !== needRead) {
+    owner._fxCanvas = document.createElement('canvas');
+    owner._fxRead = needRead;
+  }
+
+  const s = Math.min(1, sizeLimit() / Math.max(img.width, img.height));
+  bake(img, fx,
+    Math.max(1, Math.round(img.width * s)),
+    Math.max(1, Math.round(img.height * s)),
+    owner._fxCanvas);
+
   owner._fxImg = img;
   owner._fxKey = key;
-  owner._fxCanvas = canvas;
-  return canvas;
+  return owner._fxCanvas;
 }
 
-function bake(img, fx) {
-  const s = Math.min(1, sizeLimit() / Math.max(img.width, img.height));
-  const w = Math.max(1, Math.round(img.width * s));
-  const h = Math.max(1, Math.round(img.height * s));
+/* 복제본이 원본의 구워 둔 캔버스를 함께 쓰면, 한쪽 효과를 바꿀 때 둘 다 바뀐다. */
+export function clearFxCache(owner) {
+  delete owner._fxCanvas;
+  delete owner._fxKey;
+  delete owner._fxImg;
+  delete owner._fxRead;
+}
 
-  const canvas = document.createElement('canvas');
+/* 캔버스 전체에 거는 효과. 그린 결과가 매 프레임 달라지므로 구워 둘 수 없고
+   부를 때마다 다시 계산한다. 계조화는 픽셀을 직접 읽어 조금 무겁다.
+   willReadFrequently 가 캔버스마다 고정이라 두 장을 나눠 쓴다. */
+const wholeNormal = document.createElement('canvas');
+const wholeRead = document.createElement('canvas');
+
+export function applyCanvasEffect(ctx, fx) {
+  const cv = ctx.canvas;
+  if (!hasEffect(fx) || !cv.width || !cv.height) return;
+
+  const out = bake(cv, fx, cv.width, cv.height, fx.mode === 'poster' ? wholeRead : wholeNormal);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = 'copy';
+  ctx.drawImage(out, 0, 0);
+  ctx.restore();
+}
+
+function bake(img, fx, w, h, canvas) {
   canvas.width = w;
   canvas.height = h;
   // 계조화만 픽셀을 직접 읽는다. 나머지는 필터와 합성으로 처리한다.
   const ctx = canvas.getContext('2d', { willReadFrequently: fx.mode === 'poster' });
-  const a = Math.max(0, Math.min(1, fx.amount));
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const a = Math.max(0, Math.min(1, amountOf(fx)));
 
   if (fx.mode === 'chroma') {
     drawChroma(ctx, img, w, h, a);
@@ -125,26 +172,26 @@ function posterize(ctx, w, h, a) {
 function drawChroma(ctx, img, w, h, a) {
   const off = Math.max(1, Math.min(w, h) * 0.01 * a);
   const parts = [
-    ['#ff0000', -off, 0],
-    ['#00ff00', 0, 0],
-    ['#0000ff', off, 0],
+    ['#ff0000', -off],
+    ['#00ff00', 0],
+    ['#0000ff', off],
   ];
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  for (const [color, dx, dy] of parts) {
-    ctx.drawImage(channel(img, w, h, color), dx, dy);
-  }
+  parts.forEach(([color, dx], i) => ctx.drawImage(channel(img, w, h, color, i), dx, 0));
   ctx.restore();
 }
 
-const chCanvas = document.createElement('canvas');
+/* 세 채널이 동시에 필요하므로 판을 세 장 돌려 쓴다.
+   매번 새로 만들면 캔버스 전체 효과에서 한 프레임에 수십 MB 씩 버리게 된다. */
+const chPool = [0, 1, 2].map(() => document.createElement('canvas'));
 
-function channel(img, w, h, color) {
-  chCanvas.width = w;
-  chCanvas.height = h;
-  const c = chCanvas.getContext('2d');
-  c.clearRect(0, 0, w, h);
+function channel(img, w, h, color, slot) {
+  const canvas = chPool[slot];
+  canvas.width = w;          // 크기를 넣으면 판이 지워지고 상태도 초기화된다
+  canvas.height = h;
+  const c = canvas.getContext('2d');
   c.drawImage(img, 0, 0, w, h);
   c.globalCompositeOperation = 'multiply';
   c.fillStyle = color;
@@ -153,13 +200,7 @@ function channel(img, w, h, color) {
   c.globalCompositeOperation = 'destination-in';
   c.drawImage(img, 0, 0, w, h);
   c.globalCompositeOperation = 'source-over';
-
-  // 다음 채널에서 덮어쓰이므로 복사해 둔다.
-  const copy = document.createElement('canvas');
-  copy.width = w;
-  copy.height = h;
-  copy.getContext('2d').drawImage(chCanvas, 0, 0);
-  return copy;
+  return canvas;
 }
 
 /* 필름 그레인 — 회색 잡음 타일을 overlay 로 덮는다.

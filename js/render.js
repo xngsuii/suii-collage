@@ -2,7 +2,7 @@
 
 import { state, selectedLayer, MAX_VIEW } from 'app/state.js';
 import { computeLayout, coverBox, layerCorners, toCanvas } from 'app/geometry.js';
-import { filtered } from 'app/effects.js';
+import { filtered, applyCanvasEffect } from 'app/effects.js';
 
 const art = document.getElementById('canvas');
 const actx = art.getContext('2d');
@@ -44,6 +44,9 @@ export function render() {
   if (state.border.show) drawBorders(rects, W, H);
 
   for (const layer of state.layers) drawLayer(layer);
+
+  // 캔버스 전체 효과는 사진·글자·도형을 다 그린 뒤 맨 마지막에 덧입힌다.
+  applyCanvasEffect(actx, state.canvasFx);
 
   drawOverlay();
 }

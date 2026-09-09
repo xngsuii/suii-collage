@@ -223,6 +223,63 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .seg-btn.is-active { background: var(--ink); color: #fff; font-weight: 700; }
 .seg-btn:disabled { color: #c4c4c4; cursor: not-allowed; background: #f7f7f7; }
 
+/* 항목이 많아 한 줄에 안 들어가는 세그먼트. */
+.seg-wrap {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  border: none;
+  background: none;
+  padding: 0;
+}
+
+/* 칸 수가 딱 떨어지지 않아 마지막 줄에 빈 자리가 남는다. 배경으로 선을 만들면
+   그 빈 자리가 까맣게 보이므로, 선은 칸마다 그림자로 그린다.
+   1px 틈에서 이웃한 그림자가 겹쳐 균일한 한 줄이 된다. */
+.seg-wrap .seg-btn { border-right: none; box-shadow: 0 0 0 1px var(--ink); }
+
+/* ── 스위치 토글 ─────────────────────────── */
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.switch-row > span { flex: 1; white-space: nowrap; }
+/* 진짜 체크박스는 숨기지 않고 투명하게 겹쳐 둔다(키보드 초점이 살아 있도록). */
+.switch-row input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.switch {
+  flex: none;
+  position: relative;
+  width: 34px;
+  height: 18px;
+  border: 1px solid var(--line);
+  background: var(--track);
+  border-radius: 9px;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: var(--panel);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+
+.switch-row input:checked + .switch { background: var(--ink); border-color: var(--ink); }
+.switch-row input:checked + .switch::after { transform: translateX(16px); }
+.switch-row input:focus-visible + .switch { outline: 2px solid var(--ink); outline-offset: 2px; }
+
 /* 폰트 선택기 오른쪽에 붙는 굵기 선택 */
 .font-row { display: flex; align-items: center; gap: 6px; }
 .font-row select { flex: 1; min-width: 0; }
@@ -743,6 +800,23 @@ details.prop-group[open] > .prop-sub::after { transform: translateY(1px) rotate(
 
 .canvas-box canvas { display: block; width: 100%; height: 100%; }
 #overlay { position: absolute; inset: 0; touch-action: none; cursor: crosshair; }
+
+/* 글자를 두 번 눌렀을 때 그 자리에 뜨는 입력창.
+   캔버스 글자는 그동안 그리지 않으므로 이 글자만 보인다. */
+.text-edit {
+  position: absolute;
+  z-index: 3;
+  margin: 0;
+  padding: 4px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.55);
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  caret-color: var(--accent);
+}
 
 .stage-foot {
   flex: none;

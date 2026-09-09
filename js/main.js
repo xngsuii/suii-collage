@@ -1,11 +1,15 @@
 /* 캔버스 조작(선택·이동·확대·회전)과 앱 초기화. */
 
-import { state, makeText, makeShape, makeSticker, selectedLayer, removeLayer, duplicateLayer } from 'app/state.js';
 import {
-  render, getLayout, art, overlay, HANDLE, rotateHandlePoint, measureText,
+  state, makePhoto, makeText, makeShape, makeSticker,
+  selectedLayer, removeLayer, duplicateLayer,
+} from 'app/state.js';
+import {
+  render, getLayout, art, overlay, box, HANDLE, rotateHandlePoint, measureText,
   zoomViewAt, panView,
 } from 'app/render.js';
 import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from 'app/geometry.js';
+import { setFullRes } from 'app/effects.js';
 import { pickImages } from 'app/files.js';
 import {
   initLeftPanel, initRightPanel, initStageBar, initLayerReorder, initPanelTabs,
@@ -38,6 +42,7 @@ function grip() {
 }
 
 function movePinch() {
+  closeTextEditor();
   const now = grip();
   // 중점이 움직인 만큼 밀고, 벌어진 만큼 그 중점을 붙잡은 채 확대한다.
   panView(now.mid.x - pinch.mid.x, now.mid.y - pinch.mid.y);
@@ -122,6 +127,83 @@ overlay.addEventListener('click', () => {
   fillCell(idx);
 });
 
+/* ── 미리보기에서 글자 고쳐 쓰기 ─────────── */
+
+let editor = null;
+
+function closeTextEditor() {
+  if (!editor) return;
+  const el = editor;
+  editor = null;              // blur 로 다시 불려도 한 번만 정리되도록 먼저 비운다
+  state.editingId = null;
+  el.remove();
+  render();
+}
+
+/* 글자를 두 번 누르면 그 자리에 입력창을 띄운다.
+   그동안 캔버스에는 글자를 그리지 않으므로(state.editingId) 겹쳐 보이지 않는다. */
+function openTextEditor(layer) {
+  closeTextEditor();
+  state.editingId = layer.id;
+
+  const ta = document.createElement('textarea');
+  ta.className = 'text-edit';
+  ta.value = layer.text;
+  ta.spellcheck = false;
+  box.appendChild(ta);
+  editor = ta;
+  placeEditor(layer, ta);
+
+  ta.addEventListener('input', () => {
+    layer.text = ta.value;
+    measureText(layer);
+    placeEditor(layer, ta);
+    update();
+  });
+  // Delete 나 방향키가 캔버스 조작으로 새지 않게 막는다.
+  ta.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); ta.blur(); }
+  });
+  ta.addEventListener('blur', closeTextEditor);
+
+  render();
+  ta.focus();
+  ta.select();
+}
+
+/* 입력창을 캔버스 위 같은 자리·같은 서체로 맞춘다. */
+function placeEditor(layer, ta) {
+  const k = box.clientWidth / art.width;
+  const w = Math.max(40, layer._w * k) + 10;
+  const h = Math.max(24, layer._h * k) + 10;
+  Object.assign(ta.style, {
+    width: `${w}px`,
+    height: `${h}px`,
+    left: `${layer.cx * k - w / 2}px`,
+    top: `${layer.cy * k - h / 2}px`,
+    // font 단축 속성은 line-height 를 되돌리므로 반드시 뒤에서 다시 정한다.
+    font: `${layer.weight} ${layer.size * k}px "${layer.font}", sans-serif`,
+    lineHeight: String(layer.lineHeight),
+    letterSpacing: `${layer.size * layer.letterSpacing * k}px`,
+    textAlign: layer.align,
+    color: layer.color,
+    // 캔버스 쪽 기울임(-0.21)과 같은 각도로 맞춘다.
+    transform: `rotate(${layer.rot}rad)${layer.italic ? ' skewX(-11.86deg)' : ''}`,
+  });
+}
+
+overlay.addEventListener('dblclick', (e) => {
+  const p = pointer(e);
+  const hit = pickLayer(p.x, p.y);
+  if (!hit || hit.type !== 'text') return;
+  e.preventDefault();
+  drag = null;
+  state.selection = { kind: 'layer', id: hit.id };
+  update();
+  openTextEditor(hit);
+});
+
 overlay.addEventListener('pointermove', (e) => {
   if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pinch && pointers.size >= 2) { pendingFill = -1; return movePinch(); }
@@ -173,6 +255,7 @@ overlay.addEventListener('wheel', (e) => {
   // Ctrl(맥은 Cmd)과 함께면 요소가 아니라 보이는 화면을 확대한다.
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
+    closeTextEditor();
     zoomViewAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
     render();
     syncViewReset();
@@ -265,7 +348,7 @@ function normalizeAngle(a) {
 async function addPhoto() {
   const imgs = await pickImages(true);
   if (!imgs.length) return;
-  for (const img of imgs) state.photos.push({ img, panX: 0, panY: 0, zoom: 1 });
+  for (const img of imgs) state.photos.push(makePhoto(img));
   update();
 }
 
@@ -273,7 +356,7 @@ async function fillCell(index) {
   const [img] = await pickImages(false);
   if (!img) return;
   while (state.photos.length < index) state.photos.push(null);
-  state.photos[index] = { img, panX: 0, panY: 0, zoom: 1 };
+  state.photos[index] = makePhoto(img);
   state.selection = { kind: 'cell', index };
   refreshProps(true);
   update();
@@ -315,8 +398,15 @@ function exportImage() {
   const quality = format === 'png' ? undefined : state.quality;
   const ext = format === 'jpeg' ? 'jpg' : format;
 
+  // 미리보기는 효과를 작게 구워 쓴다. 내보낼 때만 원본 해상도로 다시 굽는다.
+  closeTextEditor();
+  setFullRes(true);
+  render();
+
   // 선택 표시는 오버레이에만 있으므로 작품 캔버스를 그대로 내보낸다.
   art.toBlob((blob) => {
+    setFullRes(false);
+    render();
     if (!blob) return;
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -350,7 +440,7 @@ initLayerReorder();
 initPanelTabs();
 
 // 패널 너비가 바뀌면 슬라이더 채움 경계도 다시 계산해야 한다.
-window.addEventListener('resize', () => { render(); paintAllRanges(); });
+window.addEventListener('resize', () => { closeTextEditor(); render(); paintAllRanges(); });
 
 if (document.fonts?.ready) document.fonts.ready.then(() => render());
 

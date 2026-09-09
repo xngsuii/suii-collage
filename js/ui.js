@@ -6,6 +6,7 @@ import {
 } from 'app/state.js';
 import { render, getLayout, resetView } from 'app/render.js';
 import { clampPan } from 'app/geometry.js';
+import { EFFECTS } from 'app/effects.js';
 
 const $ = (id) => document.getElementById(id);
 const propsEl = $('props');
@@ -401,11 +402,38 @@ function cellProps(index) {
       <button class="btn" data-action="fillCell" type="button">사진 넣기</button>`;
   }
   return `${slider('확대', 'zoom', photo.zoom, 1, 4, 0.01)}
+    ${switchRow('좌우 반전', 'flipH', photo.flipH)}
+    ${switchRow('상하 반전', 'flipV', photo.flipV)}
     <div class="field-row">
       <button class="btn" data-action="fillCell" type="button">교체</button>
       <button class="btn" data-action="resetPan" type="button">맞춤</button>
     </div>
-    <button class="btn btn-ghost" data-action="removePhoto" type="button">이 사진 빼기</button>`;
+    <button class="btn btn-ghost" data-action="removePhoto" type="button">이 사진 빼기</button>
+    ${effectGroup(photo)}`;
+}
+
+/* 오른쪽에 스위치가 붙은 한 줄 */
+function switchRow(label, path, on) {
+  return `<label class="switch-row">
+    <span>${label}</span>
+    <input type="checkbox" data-path="${path}" ${on ? 'checked' : ''}>
+    <i class="switch"></i>
+  </label>`;
+}
+
+/* ── 효과 ────────────────────────────────── */
+
+/* 그레인은 다른 효과 위에 겹쳐 쓰는 것이라 목록에서 빼고 따로 조절하게 뒀다. */
+function effectGroup(o) {
+  const fx = o.fx;
+  const btns = EFFECTS.map((e) => `
+    <button class="seg-btn ${fx.mode === e.id ? 'is-active' : ''}"
+      data-set="fx.mode" data-value="${e.id}" type="button">${e.label}</button>`).join('');
+
+  return group('효과', `
+    <div class="seg seg-wrap">${btns}</div>
+    ${fx.mode === 'none' ? '' : slider('강도', 'fx.amount', fx.amount, 0, 1, 0.01)}
+    ${slider('필름 그레인', 'fx.grain', fx.grain, 0, 1, 0.01)}`);
 }
 
 function layerProps(l) {
@@ -524,6 +552,7 @@ function stickerProps(l) {
         ${colorField('선 색상', 'outline.color', l.outline.color)}
         ${slider('선 굵기', 'outline.width', l.outline.width, 1, 80, 1)}` : ''}`)}
 
+    ${effectGroup(l)}
     ${commonGroups(l)}`;
 }
 
@@ -557,7 +586,7 @@ function commonGroups(l) {
 const title = (text) => `<div class="prop-title">${text}</div>`;
 
 /* 제목이 있는 묶음은 접을 수 있고, 열고 닫은 상태를 기억한다. */
-const openGroups = new Set(['글자 모양', '채우기', '크기']);
+const openGroups = new Set(['글자 모양', '채우기', '크기', '효과']);
 
 const group = (heading, body) => {
   if (!heading) return `<div class="prop-group">${body}</div>`;

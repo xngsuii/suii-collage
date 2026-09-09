@@ -1,5 +1,7 @@
 /* 상태와 상수 정의. 다른 모듈은 여기서 state를 읽고 쓴다. */
 
+import { newFx } from 'app/effects.js';
+
 export const RATIOS = [
   { id: '1:1',  w: 1,  h: 1  },
   { id: '4:5',  w: 4,  h: 5  },
@@ -67,10 +69,13 @@ export const state = {
   bg: '#ffffff',
   border: { show: false, width: 4, color: '#000000', outer: true },
 
-  photos: [],              // { img, panX, panY, zoom }
+  photos: [],              // makePhoto() 참고
   layers: [],              // sticker | text | shape
 
   selection: null,         // { kind: 'cell', index } | { kind: 'layer', id }
+
+  // 미리보기에서 글자를 고쳐 쓰는 중인 텍스트 레이어. 캔버스에는 글자를 그리지 않는다.
+  editingId: null,
 
   // 정렬을 돕는 안내선. 미리보기에만 그리고 내보낸 이미지에는 남지 않는다.
   grid: { show: false, snap: false, cols: 3, rows: 3 },
@@ -103,7 +108,7 @@ export function duplicateLayer(id) {
   if (i < 0) return null;
   const src = state.layers[i];
   const copy = { ...src, id: newId(), cx: src.cx + 40, cy: src.cy + 40 };
-  for (const key of ['bg', 'fill', 'stroke', 'outline', 'shadow']) {
+  for (const key of ['bg', 'fill', 'stroke', 'outline', 'shadow', 'fx']) {
     if (src[key]) copy[key] = { ...src[key] };
   }
   state.layers.splice(i + 1, 0, copy);
@@ -137,7 +142,11 @@ export function applyRatio(rw, rh) {
   }
 }
 
-/* ── 레이어 생성 ─────────────────────────── */
+/* ── 사진과 레이어 생성 ──────────────────── */
+
+export function makePhoto(img) {
+  return { img, panX: 0, panY: 0, zoom: 1, flipH: false, flipV: false, fx: newFx() };
+}
 
 export function makeText(cx, cy, size) {
   return {
@@ -174,6 +183,7 @@ export function makeSticker(img, cx, cy, size) {
   return {
     id: newId(), type: 'sticker', img,
     cx, cy, rot: 0, w, h,
+    fx: newFx(),
     outline: { show: false, color: '#ffffff', width: 14 },
     shadow: { show: false, opacity: 0.32, blur: 0.014 },   // blur 는 캔버스 짧은 변 대비 비율
     _w: w, _h: h,

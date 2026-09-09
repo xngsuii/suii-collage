@@ -2,6 +2,7 @@
 
 import { state, selectedLayer, MAX_VIEW } from 'app/state.js';
 import { computeLayout, coverBox, layerCorners, toCanvas } from 'app/geometry.js';
+import { filtered } from 'app/effects.js';
 
 const art = document.getElementById('canvas');
 const actx = art.getContext('2d');
@@ -121,12 +122,28 @@ export function resetView() {
 /* ── 사진 칸 ─────────────────────────────── */
 
 function drawPhoto(photo, rect) {
-  const b = coverBox(photo.img, rect, photo.zoom, photo.panX, photo.panY);
+  // 뒤집을 때는 미는 방향도 함께 뒤집힌다. 끄는 손 방향과 맞도록 미리 되돌려 둔다.
+  const b = coverBox(
+    photo.img, rect, photo.zoom,
+    photo.flipH ? -photo.panX : photo.panX,
+    photo.flipV ? -photo.panY : photo.panY,
+  );
+
   actx.save();
   actx.beginPath();
   actx.rect(rect.x, rect.y, rect.w, rect.h);
   actx.clip();
-  actx.drawImage(photo.img, b.x, b.y, b.w, b.h);
+
+  if (photo.flipH || photo.flipV) {
+    const cx = rect.x + rect.w / 2;
+    const cy = rect.y + rect.h / 2;
+    actx.translate(cx, cy);
+    actx.scale(photo.flipH ? -1 : 1, photo.flipV ? -1 : 1);
+    actx.translate(-cx, -cy);
+  }
+
+  // 효과가 없으면 원본 이미지가 그대로 돌아온다.
+  actx.drawImage(filtered(photo, photo.img, photo.fx), b.x, b.y, b.w, b.h);
   actx.restore();
 }
 
@@ -204,7 +221,8 @@ function drawSticker(layer) {
   }
 
   actx.shadowColor = 'transparent';
-  actx.drawImage(layer.img, x, y, w, h);
+  // 아웃라인은 원본 알파를 따라야 하므로 위에서 원본을 쓰고, 몸통만 효과를 먹인다.
+  actx.drawImage(filtered(layer, layer.img, layer.fx), x, y, w, h);
   actx.restore();
 }
 
@@ -399,6 +417,9 @@ function drawText(layer) {
       actx.restore();
     }
   }
+
+  // 고쳐 쓰는 중이면 화면 위 입력창이 글자를 보여준다. 캔버스에 겹쳐 그리지 않는다.
+  if (state.editingId === layer.id) { actx.restore(); return; }
 
   // 글자 — 이탤릭은 기울임 변환으로 처리한다(한글 폰트에 이탤릭 자형이 없으므로).
   actx.save();

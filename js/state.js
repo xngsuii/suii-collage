@@ -39,7 +39,7 @@ export const FONTS = [
   { id: 'Gowun Batang',   label: '고운바탕',   kind: 'serif', weights: [400, 700] },
 ];
 
-export const KIND_LABEL = { sans: '산세리프', serif: '세리프' };
+export const KIND_LABEL = { sans: '산세리프', serif: '세리프', custom: '웹폰트 (이 창에서만)' };
 export const WEIGHT_LABEL = { 300: 'Light', 400: 'Medium', 700: 'Bold' };
 
 export const findFont = (id) => FONTS.find((f) => f.id === id) || FONTS[0];
@@ -49,8 +49,9 @@ export const BASE_SIZE = 1600;
 export const MAX_SIZE = 12000;
 /* 브라우저가 감당할 만한 총 픽셀 수 상한 */
 export const MAX_AREA = 40e6;
-/* 미리보기를 들여다볼 수 있는 최대 배율 */
-export const MAX_VIEW = 6;
+/* 미리보기 배율의 위아래 한계. 1 = 캔버스 1px 이 화면 1px(100%). */
+export const MAX_VIEW = 8;
+export const MIN_VIEW = 0.05;
 
 let nextId = 1;
 export const newId = () => nextId++;
@@ -86,8 +87,9 @@ export const state = {
   // 정렬을 돕는 안내선. 미리보기에만 그리고 내보낸 이미지에는 남지 않는다.
   grid: { show: false, snap: false, cols: 3, rows: 3 },
 
-  // 미리보기를 들여다보는 배율. 결과물에는 영향을 주지 않는다.
-  view: { scale: 1, x: 0, y: 0 },
+  /* 미리보기를 들여다보는 배율. 결과물에는 영향을 주지 않는다.
+     fit 이면 창에 맞춰 자동으로 잡고, 아니면 scale 을 그대로 쓴다(1 = 100%). */
+  view: { fit: true, scale: 1, x: 0, y: 0 },
 
   exportFormat: 'png',
   quality: 0.92,
@@ -182,7 +184,7 @@ export function makeText(cx, cy, size) {
     color: '#000000',
     stroke: { show: false, color: '#ffffff', width: 0.08 },   // 글자 크기 대비 비율
     bg: { mode: 'none', color: '#ffffff', opacity: 0.9, padX: 0.5, padY: 0.3, radius: 0.15 },
-    shadow: { show: false, opacity: 0.32, blur: 0.014 },   // blur 는 캔버스 짧은 변 대비 비율
+    shadow: { show: false, opacity: 0.32, blur: 0.014, angle: 0 },   // blur 는 캔버스 짧은 변 대비 비율, angle 은 빛 방향(0 = 위)
     _w: 10, _h: 10,
   };
 }
@@ -192,10 +194,10 @@ export function makeShape(shape, cx, cy, size) {
     id: newId(), type: 'shape', shape,          // 'rect' | 'circle'
     cx, cy, rot: 0,
     w: size, h: size,
-    radius: shape === 'rect' ? 0.08 : 0,        // 짧은 변 대비 비율
+    radius: 0,                                  // 짧은 변 대비 비율
     fill: { mode: 'solid', c1: '#0038ff', c2: '#ffffff', a1: 1, a2: 0, angle: 90, opacity: 1 },
     stroke: { show: false, color: '#000000', width: 4 },
-    shadow: { show: false, opacity: 0.32, blur: 0.014 },   // blur 는 캔버스 짧은 변 대비 비율
+    shadow: { show: false, opacity: 0.32, blur: 0.014, angle: 0 },   // blur 는 캔버스 짧은 변 대비 비율, angle 은 빛 방향(0 = 위)
     _w: size, _h: size,
   };
 }
@@ -209,7 +211,7 @@ export function makeSticker(img, cx, cy, size) {
     cx, cy, rot: 0, w, h,
     fx: newFx(),
     outline: { show: false, color: '#ffffff', width: 14 },
-    shadow: { show: false, opacity: 0.32, blur: 0.014 },   // blur 는 캔버스 짧은 변 대비 비율
+    shadow: { show: false, opacity: 0.32, blur: 0.014, angle: 0 },   // blur 는 캔버스 짧은 변 대비 비율, angle 은 빛 방향(0 = 위)
     _w: w, _h: h,
   };
 }

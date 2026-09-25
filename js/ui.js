@@ -1,12 +1,13 @@
 /* 좌/우 패널 UI. 상태를 바꾸고 다시 그리도록 요청한다. */
 
 import {
-  state, RATIOS, TEMPLATES, FONTS, KIND_LABEL, WEIGHT_LABEL, findFont,
+  state, RATIOS, TEMPLATES, KIND_LABEL, WEIGHT_LABEL,
   template, selectedLayer, removeLayer, duplicateLayer, resizeCanvas, applyRatio, movePhoto,
 } from 'app/state.js';
-import { render, getLayout, resetView } from 'app/render.js';
+import { render, getLayout, fitView, setViewScale, viewRatio, fitRatio } from 'app/render.js';
 import { clampPan } from 'app/geometry.js';
 import { EFFECTS } from 'app/effects.js';
+import { allFonts, findFont, addWebFont } from 'app/webfonts.js';
 
 const $ = (id) => document.getElementById(id);
 const propsEl = $('props');
@@ -86,6 +87,7 @@ export const photoCount = () => state.photos.filter(Boolean).length;
 
 export function update() {
   render();
+  syncZoomBar();
   refreshProps();
   refreshPhotoFx();
   refreshThumbs();
@@ -395,6 +397,19 @@ export function initRightPanel(actions) {
   propsEl.addEventListener("change", onNumCommit);
   propsEl.addEventListener("click", (e) => onPropClick(e, actions));
   trackGroupToggles(propsEl);
+
+  // 웹폰트 칸은 data-path 가 없어 위 처리기들이 그냥 지나친다. 따로 받는다.
+  propsEl.addEventListener('change', (e) => {
+    const cb = e.target.closest('[data-webfont-toggle]');
+    if (!cb) return;
+    webfontOpen = cb.checked;
+    webfontMsg = '';
+    refreshProps(true);
+  });
+  propsEl.addEventListener('input', (e) => {
+    const ta = e.target.closest('[data-webfont-code]');
+    if (ta) webfontDraft = ta.value;
+  });
 }
 
 /* 레이어 칸 우상단 + 드롭다운 */
@@ -454,17 +469,28 @@ export function initPanelTabs() {
   activate('preview');
 }
 
-/* 미리보기를 들여다보는 배율 표시 */
-export function syncViewReset() {
-  $('viewReset').classList.toggle('is-hidden', state.view.scale === 1);
+/* 배율 버튼과 지금 배율 표시 */
+export function syncZoomBar() {
+  const pct = Math.round(viewRatio() * 100);
+  $('zoomNow').textContent = `${pct}%`;
+  for (const b of $('zoomBar').querySelectorAll('[data-zoom]')) {
+    const z = b.dataset.zoom;
+    const on = z === 'fit'
+      ? state.view.fit
+      : !state.view.fit && Math.abs(viewRatio() - Number(z)) < 0.005;
+    b.classList.toggle('is-active', on);
+  }
 }
 
 /* 미리보기 아래 그리드 · 스냅 */
 export function initStageBar() {
-  $('viewReset').addEventListener('click', () => {
-    resetView();
+  $('zoomBar').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-zoom]');
+    if (!btn) return;
+    if (btn.dataset.zoom === 'fit') fitView();
+    else setViewScale(Number(btn.dataset.zoom));
     render();
-    syncViewReset();
+    syncZoomBar();
   });
 
   $('gridOn').addEventListener('change', (e) => { state.grid.show = e.target.checked; render(); });
@@ -601,12 +627,51 @@ function layerProps(l) {
 /* ── 텍스트 ──────────────────────────────── */
 
 function fontOptions(current) {
-  return ['sans', 'serif'].map((kind) => {
-    const opts = FONTS.filter((f) => f.kind === kind)
-      .map((f) => `<option value="${f.id}" ${f.id === current ? 'selected' : ''}>${f.label}</option>`)
+  return ['sans', 'serif', 'custom'].map((kind) => {
+    const list = allFonts().filter((f) => f.kind === kind);
+    if (!list.length) return '';
+    const opts = list
+      .map((f) => `<option value="${f.id}" ${f.id === current ? 'selected' : ''}>${escapeHtml(f.label)}</option>`)
       .join('');
     return `<optgroup label="${KIND_LABEL[kind]}">${opts}</optgroup>`;
   }).join('');
+}
+
+/* ── 웹폰트 임시 추가 ────────────────────── */
+
+/* 속성 패널은 자주 다시 만들어지므로, 펼침 상태와 입력 중인 코드는 밖에 둔다. */
+let webfontOpen = false;
+let webfontDraft = '';
+let webfontMsg = '';
+
+function webfontBox() {
+  const body = !webfontOpen ? '' : `
+    <div class="webfont">
+      <textarea data-webfont-code rows="3"
+        placeholder="&lt;link&gt; 태그나 @import · @font-face 코드를 붙여 넣으세요">${escapeHtml(webfontDraft)}</textarea>
+      <button class="btn" data-action="webfontAdd" type="button">확인</button>
+      ${webfontMsg ? `<p class="block-note">${escapeHtml(webfontMsg)}</p>` : ''}
+      <p class="block-note">이 창에서만 씁니다. 새로고침하면 사라집니다.</p>
+    </div>`;
+
+  return `<label class="check check-sm">
+      <input type="checkbox" data-webfont-toggle ${webfontOpen ? 'checked' : ''}>
+      <span>웹폰트 사용</span>
+    </label>${body}`;
+}
+
+async function applyWebFont() {
+  const code = webfontDraft.trim();
+  if (!code) { webfontMsg = '임베드 코드를 붙여 넣어 주세요.'; refreshProps(true); return; }
+
+  webfontMsg = '불러오는 중…';
+  refreshProps(true);
+
+  const res = await addWebFont(code);
+  webfontMsg = res.ok ? `${res.added.join(', ')} — 폰트 목록에 넣었습니다.` : res.error;
+  if (res.ok) webfontDraft = '';
+  render();
+  refreshProps(true);
 }
 
 const WEIGHT_SHORT = { 300: 'L', 400: 'M', 700: 'B' };
@@ -630,6 +695,7 @@ function textProps(l) {
         <select data-path="font">${fontOptions(l.font)}</select>
         ${weightSeg(l)}
       </div>
+      ${webfontBox()}
       <div class="icon-row">
         <button class="icon-btn i-italic ${l.italic ? 'is-active' : ''}" data-toggle="italic" type="button">I</button>
         <span class="spacer"></span>
@@ -718,7 +784,9 @@ function commonGroups(l) {
       <label class="check"><input type="checkbox" data-path="shadow.show" ${l.shadow.show ? 'checked' : ''}><span>그림자 넣기</span></label>
       ${l.shadow.show ? `
         ${slider('불투명도', 'shadow.opacity', l.shadow.opacity, 0.05, 1, 0.01)}
-        ${slider('번짐 범위', 'shadow.blur', l.shadow.blur, 0.002, 0.08, 0.001)}` : ''}`)}
+        ${slider('번짐 범위', 'shadow.blur', l.shadow.blur, 0.002, 0.08, 0.001)}
+        ${slider('빛 방향 °', 'shadow.angle', l.shadow.angle, 0, 359, 1, { cls: 'sun', reset: 'resetShadowAngle' })}
+        <p class="block-note">해를 옮기면 그림자가 반대쪽으로 집니다. 0° 는 위쪽입니다.</p>` : ''}`)}
 
     ${group('회전', slider('각도 °', 'rot', (l.rot * 180) / Math.PI, -180, 180, 1,
       { reset: 'resetRot', scale: Math.PI / 180 }))}
@@ -774,9 +842,10 @@ function slider(label, path, value, min, max, step, opts = {}) {
     : label ? `<span class="slider-label">${label}</span>` : '';
   const scale = opts.scale ? ` data-scale="${opts.scale}"` : '';
   const attrs = `data-path="${path}" data-num="1"${scale} min="${min}" max="${max}" step="${step}"`;
+  const cls = opts.cls ? ` class="${opts.cls}"` : '';
   return `<div class="slider">${head}
     <span class="slider-row">
-      <input type="range" ${attrs} value="${value}">
+      <input type="range"${cls} ${attrs} value="${value}">
       <input type="number" class="num" ${attrs} value="${fmt(value, step)}">
     </span>
   </div>`;
@@ -946,6 +1015,8 @@ function onPropClick(e, actions) {
   if (!actionBtn) return;
 
   const act = actionBtn.dataset.action;
+  if (act === 'webfontAdd') return void applyWebFont();
+
   const sel = state.selection;
   if (!sel) return;
 
@@ -960,6 +1031,7 @@ function onPropClick(e, actions) {
     return;
   }
   if (act === 'resetRot' && target) { target.rot = 0; render(); refreshProps(true); return; }
+  if (act === 'resetShadowAngle' && target) { target.shadow.angle = 0; render(); refreshProps(true); return; }
   if (act === 'removePhoto') {
     // 템플릿 모드에서는 뒤 사진이 앞으로 밀리지 않도록 자리만 비운다.
     if (state.mode === 'template') state.photos[sel.index] = null;

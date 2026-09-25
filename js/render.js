@@ -1,6 +1,6 @@
 /* 캔버스 그리기. 작품용 캔버스(#canvas)와 선택 표시용 오버레이(#overlay)를 나눠 그린다. */
 
-import { state, selectedLayer, MAX_VIEW } from 'app/state.js';
+import { state, selectedLayer, MAX_VIEW, MIN_VIEW } from 'app/state.js';
 import { computeLayout, coverBox, layerCorners, toCanvas } from 'app/geometry.js';
 import { filtered, applyCanvasEffect } from 'app/effects.js';
 
@@ -9,6 +9,9 @@ const actx = art.getContext('2d');
 const overlay = document.getElementById('overlay');
 const octx = overlay.getContext('2d');
 const box = document.getElementById('canvasBox');
+
+/* 선택 표시 색. CSS 의 --accent 와 같은 값을 쓴다. */
+const ACCENT = '#1f6b70';
 
 export const HANDLE = 9;        // 화면 기준 핸들 크기(px)
 export const ROTATE_OFFSET = 26;
@@ -68,15 +71,24 @@ function keepLayersInFrame(prev, next) {
    view.x / view.y 는 보기 창 왼쪽 위를 기준으로 한 박스의 위치다. */
 const VIEW_PAD = 28;
 
+/* 지금 화면에 적용 중인 배율과, 창에 딱 맞출 때의 배율.
+   둘 다 '캔버스 1px 이 화면 몇 px 인지'라서 그대로 백분율로 보여 줄 수 있다. */
+let lastRatio = 1;
+let lastFit = 1;
+export const viewRatio = () => lastRatio;
+export const fitRatio = () => lastFit;
+
 function fitBox(W, H) {
   const stage = box.parentElement;
   const vw = stage.clientWidth;
   const vh = stage.clientHeight;
   if (vw <= 0 || vh <= 0) return;
 
-  const base = Math.min((vw - VIEW_PAD * 2) / W, (vh - VIEW_PAD * 2) / H);
-  const w = W * base * state.view.scale;
-  const h = H * base * state.view.scale;
+  lastFit = Math.min((vw - VIEW_PAD * 2) / W, (vh - VIEW_PAD * 2) / H);
+  lastRatio = state.view.fit ? lastFit : state.view.scale;
+
+  const w = W * lastRatio;
+  const h = H * lastRatio;
 
   box.style.width = `${Math.round(w)}px`;
   box.style.height = `${Math.round(h)}px`;
@@ -103,23 +115,32 @@ export function zoomViewAt(factor, clientX, clientY) {
   const fx = clientX - r.left;
   const fy = clientY - r.top;
 
-  const v = state.view;
-  const next = Math.min(MAX_VIEW, Math.max(1, v.scale * factor));
-  if (next === v.scale) return;
+  const cur = lastRatio;
+  const next = Math.min(MAX_VIEW, Math.max(MIN_VIEW, cur * factor));
+  if (next === cur) return;
 
   // 초점에서 박스 왼쪽 위까지의 거리는 배율에 비례해 늘어난다.
-  v.x = fx - (fx - v.x) * (next / v.scale);
-  v.y = fy - (fy - v.y) * (next / v.scale);
+  const v = state.view;
+  v.x = fx - (fx - v.x) * (next / cur);
+  v.y = fy - (fy - v.y) * (next / cur);
+  v.fit = false;
   v.scale = next;
+}
+
+/* 배율 버튼이 쓰는 입구. 보기 창 한가운데를 붙잡은 채 그 배율로 맞춘다. */
+export function setViewScale(ratio) {
+  const stage = box.parentElement;
+  const r = stage.getBoundingClientRect();
+  zoomViewAt(ratio / lastRatio, r.left + r.width / 2, r.top + r.height / 2);
+}
+
+export function fitView() {
+  state.view.fit = true;   // 위치는 clampView 가 가운데로 되돌린다
 }
 
 export function panView(dx, dy) {
   state.view.x += dx;
   state.view.y += dy;
-}
-
-export function resetView() {
-  state.view.scale = 1;   // 위치는 clampView 가 가운데로 되돌린다
 }
 
 /* 개별 효과는 'each' 모드에서만 산다. null 을 넘기면 원본이 그대로 돌아온다. */
@@ -271,13 +292,19 @@ function silhouette(img, w, h, width, color) {
 const glassEdge = () => Math.max(1.5, Math.min(art.width, art.height) * 0.0022);
 const glassBlur = () => Math.max(10, Math.min(art.width, art.height) * 0.022);
 
-/* 그림자도 같은 이유로 번짐 반경을 캔버스 기준으로 잡는다. */
+/* 그림자도 같은 이유로 번짐 반경을 캔버스 기준으로 잡는다.
+   angle 은 빛이 있는 쪽이다. 0 이 위(12시)이고 시계 방향으로 돈다.
+   그림자는 그 반대편으로 떨어진다. */
 function applyShadow(c, sh) {
   const unit = Math.min(art.width, art.height);
   const blur = Math.max(2, unit * sh.blur);
+  const dist = blur * 0.35;
+  const a = ((sh.angle || 0) * Math.PI) / 180;
+
   c.shadowColor = `rgba(0, 0, 0, ${sh.opacity})`;
   c.shadowBlur = blur;
-  c.shadowOffsetY = blur * 0.35;
+  c.shadowOffsetX = -Math.sin(a) * dist;
+  c.shadowOffsetY = Math.cos(a) * dist;
 }
 
 /* 글래스처럼 칠 자체가 반투명한 경우, 아래에 불투명한 판을 깔아 그림자만 흘린다. */
@@ -526,7 +553,7 @@ export function drawOverlay() {
   if (sel.kind === 'cell') {
     const r = lastLayout.rects[sel.index];
     if (!r) return;
-    octx.strokeStyle = '#0038ff';
+    octx.strokeStyle = ACCENT;
     octx.lineWidth = 2;
     octx.setLineDash([5, 4]);
     octx.strokeRect(r.x * k + 1, r.y * k + 1, r.w * k - 2, r.h * k - 2);
@@ -539,7 +566,7 @@ export function drawOverlay() {
 
   const pts = layerCorners(layer).map((p) => ({ x: p.x * k, y: p.y * k }));
 
-  octx.strokeStyle = '#0038ff';
+  octx.strokeStyle = ACCENT;
   octx.lineWidth = 1.5;
   octx.beginPath();
   octx.moveTo(pts[0].x, pts[0].y);
@@ -587,7 +614,7 @@ function drawGrid(cssW, cssH) {
 
 function dot(x, y, round) {
   octx.fillStyle = '#ffffff';
-  octx.strokeStyle = '#0038ff';
+  octx.strokeStyle = ACCENT;
   octx.lineWidth = 1.5;
   octx.beginPath();
   if (round) octx.arc(x, y, HANDLE / 2, 0, Math.PI * 2);

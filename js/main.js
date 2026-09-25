@@ -13,7 +13,7 @@ import { setFullRes } from 'app/effects.js';
 import { pickImages } from 'app/files.js';
 import {
   initLeftPanel, initRightPanel, initStageBar, initLayerReorder, initPanelTabs,
-  update, refreshProps, syncFromCanvas, syncViewReset, paintAllRanges,
+  update, refreshProps, syncFromCanvas, syncZoomBar, paintAllRanges,
 } from 'app/ui.js';
 
 /* ── 좌표 변환 ───────────────────────────── */
@@ -49,7 +49,7 @@ function movePinch() {
   zoomViewAt(now.dist / pinch.dist, now.mid.x, now.mid.y);
   pinch = now;
   render();
-  syncViewReset();
+  syncZoomBar();
 }
 
 /* ── 드래그 상태 ─────────────────────────── */
@@ -66,6 +66,15 @@ function capture(pointerId) {
 let pendingFill = -1;
 
 overlay.addEventListener('pointerdown', (e) => {
+  // 가운데 버튼은 화면 이동 전용. 디자인 도구들과 같은 감각.
+  if (e.button === 1) {
+    e.preventDefault();
+    closeTextEditor();
+    drag = { mode: 'panView', lastX: e.clientX, lastY: e.clientY };
+    capture(e.pointerId);
+    return;
+  }
+
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   pendingFill = -1;
   if (pointers.size >= 2) {
@@ -120,10 +129,16 @@ overlay.addEventListener('pointerdown', (e) => {
 });
 
 /* 미리보기의 빈 칸(＋)을 탭하면 바로 사진을 고른다. */
+let lastFillAt = 0;
+
 overlay.addEventListener('click', () => {
   if (pendingFill < 0) return;
   const idx = pendingFill;
   pendingFill = -1;
+  // 빠르게 두 번 누르면 파일 창이 두 번 열린다. 바로 뒤따르는 두 번째는 흘려보낸다.
+  const now = Date.now();
+  if (now - lastFillAt < 600) return;
+  lastFillAt = now;
   fillCell(idx);
 });
 
@@ -195,13 +210,27 @@ function placeEditor(layer, ta) {
 
 overlay.addEventListener('dblclick', (e) => {
   const p = pointer(e);
+
   const hit = pickLayer(p.x, p.y);
-  if (!hit || hit.type !== 'text') return;
+  if (hit) {
+    if (hit.type !== 'text') return;
+    e.preventDefault();
+    drag = null;
+    state.selection = { kind: 'layer', id: hit.id };
+    update();
+    openTextEditor(hit);
+    return;
+  }
+
+  // 얹은 요소가 없으면 사진 칸이다. 두 번 누르면 바로 교체한다.
+  // 빈 칸은 한 번만 눌러도 열리므로(pendingFill) 여기서는 채워진 칸만 받는다.
+  const idx = hitCell(getLayout().rects, p.x, p.y);
+  if (idx < 0 || !state.photos[idx]) return;
   e.preventDefault();
   drag = null;
-  state.selection = { kind: 'layer', id: hit.id };
+  state.selection = { kind: 'cell', index: idx };
   update();
-  openTextEditor(hit);
+  fillCell(idx);
 });
 
 overlay.addEventListener('pointermove', (e) => {
@@ -209,6 +238,15 @@ overlay.addEventListener('pointermove', (e) => {
   if (pinch && pointers.size >= 2) { pendingFill = -1; return movePinch(); }
 
   if (!drag) return;
+
+  if (drag.mode === 'panView') {
+    panView(e.clientX - drag.lastX, e.clientY - drag.lastY);
+    drag.lastX = e.clientX;
+    drag.lastY = e.clientY;
+    render();
+    return;
+  }
+
   const p = pointer(e);
 
   if (drag.mode === 'move') {
@@ -250,24 +288,40 @@ function endPointer(e) {
 overlay.addEventListener('pointerup', endPointer);
 overlay.addEventListener('pointercancel', endPointer);
 
-/* 휠: 레이어 위면 크기, 사진 칸 위면 확대 */
+/* 휠은 화면을 민다. 크기 조절은 Alt 를 눌러야 한다.
+   같은 제스처가 상황에 따라 달라지면 헷갈리므로 역할을 갈라 뒀다.
+   (확대해 놓고 화면을 옮기려 휠을 굴리면 사진이 확대되던 문제) */
 overlay.addEventListener('wheel', (e) => {
-  // Ctrl(맥은 Cmd)과 함께면 요소가 아니라 보이는 화면을 확대한다.
+  // Ctrl(맥은 Cmd)과 함께면 화면 배율. 브라우저가 가로채는 일이 있어 버튼도 따로 뒀다.
   if (e.ctrlKey || e.metaKey) {
     e.preventDefault();
     closeTextEditor();
     zoomViewAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY);
     render();
-    syncViewReset();
+    syncZoomBar();
     return;
   }
 
+  if (e.altKey) {
+    e.preventDefault();
+    return resizeUnderPointer(e);
+  }
+
+  // 그 밖에는 보이는 화면을 민다. Shift 를 누르면 좌우로.
+  e.preventDefault();
+  closeTextEditor();
+  if (e.shiftKey) panView(-e.deltaY, 0);
+  else panView(-e.deltaX, -e.deltaY);
+  render();
+}, { passive: false });
+
+/* Alt+휠 — 포인터 아래 요소의 크기, 사진 칸이면 사진 확대 */
+function resizeUnderPointer(e) {
   const p = pointer(e);
   const step = e.deltaY < 0 ? 1.06 : 1 / 1.06;
 
   const hit = pickLayer(p.x, p.y);
   if (hit) {
-    e.preventDefault();
     state.selection = { kind: 'layer', id: hit.id };
     if (hit.type === 'text') hit.size = Math.max(8, Math.min(600, hit.size * step));
     else {
@@ -283,12 +337,11 @@ overlay.addEventListener('wheel', (e) => {
   const idx = hitCell(getLayout().rects, p.x, p.y);
   const photo = idx >= 0 ? state.photos[idx] : null;
   if (!photo) return;
-  e.preventDefault();
   state.selection = { kind: 'cell', index: idx };
   photo.zoom = Math.min(4, Math.max(1, photo.zoom * step));
   clampPan(photo, getLayout().rects[idx]);
   update();
-}, { passive: false });
+}
 
 /* 키보드 */
 window.addEventListener('keydown', (e) => {
@@ -440,7 +493,7 @@ initLayerReorder();
 initPanelTabs();
 
 // 패널 너비가 바뀌면 슬라이더 채움 경계도 다시 계산해야 한다.
-window.addEventListener('resize', () => { closeTextEditor(); render(); paintAllRanges(); });
+window.addEventListener('resize', () => { closeTextEditor(); render(); syncZoomBar(); paintAllRanges(); });
 
 if (document.fonts?.ready) document.fonts.ready.then(() => render());
 

@@ -14,9 +14,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- 홈 화면 아래 이름. 길면 iOS 가 잘라 버린다. -->
 <meta name="apple-mobile-web-app-title" content="IMG Collage">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=14">
-<link rel="icon" href="icons/favicon.png?v=14" sizes="64x64" type="image/png">
-<link rel="manifest" href="manifest.webmanifest?v=14">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=21">
+<link rel="icon" href="icons/favicon.png?v=21" sizes="64x64" type="image/png">
+<link rel="manifest" href="manifest.webmanifest?v=21">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,17 +24,18 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@300;400;700&family=Noto+Serif+KR:wght@300;400;700&display=swap">
 <!-- ?v= 는 캐시 무효화용. 파일을 고쳐 배포할 때마다 아래 숫자를 전부 같이 올린다.
      (모듈까지 한 번에 갱신되도록 임포트 맵으로 묶어 뒀다) -->
-<link rel="stylesheet" href="css/fonts.css?v=14">
-<link rel="stylesheet" href="css/style.css?v=14">
+<link rel="stylesheet" href="css/fonts.css?v=21">
+<link rel="stylesheet" href="css/style.css?v=21">
 <script type="importmap">
 {
   "imports": {
-    "app/state.js":    "./js/state.js?v=14",
-    "app/effects.js":  "./js/effects.js?v=14",
-    "app/geometry.js": "./js/geometry.js?v=14",
-    "app/render.js":   "./js/render.js?v=14",
-    "app/files.js":    "./js/files.js?v=14",
-    "app/ui.js":       "./js/ui.js?v=14"
+    "app/state.js":    "./js/state.js?v=21",
+    "app/effects.js":  "./js/effects.js?v=21",
+    "app/webfonts.js": "./js/webfonts.js?v=21",
+    "app/geometry.js": "./js/geometry.js?v=21",
+    "app/render.js":   "./js/render.js?v=21",
+    "app/files.js":    "./js/files.js?v=21",
+    "app/ui.js":       "./js/ui.js?v=21"
   }
 }
 </script>
@@ -185,9 +186,16 @@
           <label class="check check-sm">
             <input type="checkbox" id="snapOn"><span>스냅</span>
           </label>
-          <button class="mini-btn is-hidden" id="viewReset" type="button">화면 맞춤</button>
           <span class="spacer"></span>
-          <span class="stage-tip">빈 칸을 클릭해 사진 넣기 · 드래그로 이동 · 휠로 확대 · 두 손가락(또는 Ctrl+휠)으로 화면 확대</span>
+          <span class="stage-tip">빈 칸 클릭해 넣기 · 두 번 눌러 교체 · 드래그로 이동 · 휠로 화면 이동 · Alt+휠로 크기 조절</span>
+          <!-- Ctrl+휠은 브라우저가 가로채는 경우가 있어, 배율은 버튼으로도 고를 수 있게 뒀다. -->
+          <span class="zoom-bar" id="zoomBar">
+            <button class="mini-btn" data-zoom="fit" type="button">맞춤</button>
+            <button class="mini-btn" data-zoom="0.5" type="button">50%</button>
+            <button class="mini-btn" data-zoom="0.75" type="button">75%</button>
+            <button class="mini-btn" data-zoom="1" type="button">100%</button>
+            <span class="zoom-now" id="zoomNow">—</span>
+          </span>
         </div>
       </div>
     </main>
@@ -246,6 +254,6 @@
 
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
 
-<script type="module" src="js/main.js?v=14"></script>
+<script type="module" src="js/main.js?v=21"></script>
 </body>
 </html>

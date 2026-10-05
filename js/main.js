@@ -548,8 +548,8 @@ async function pickBgPattern() {
   const [img] = await pickImages(false);
   if (!img) return;
   state.bgPattern.img = img;
-  // 아직 무늬를 안 골랐다면 바로 보이도록 하프톤으로 켜 준다.
-  if (!['pixel', 'halftone'].includes(state.bgPattern.kind)) state.bgPattern.kind = 'halftone';
+  // 사진을 쓰지 않는 무늬를 고른 채였다면 바로 보이도록 하프톤으로 켜 준다.
+  if (!['blur', 'pixel', 'halftone'].includes(state.bgPattern.kind)) state.bgPattern.kind = 'halftone';
   update();
 }
 

@@ -1,9 +1,10 @@
 /* 배경 무늬. 배경색 위·사진 아래에 깔리고 내보낸 이미지에도 함께 나간다.
 
    state.bgPattern 하나만 보고 캔버스 전체를 채운다. 무늬는 두 갈래다.
-   · 반복 무늬(모눈·도트·체커·깅엄) — 작은 타일을 만들어 createPattern 으로 깐다.
+   · 반복 무늬(모눈·도트·체커) — 작은 타일을 만들어 createPattern 으로 깐다.
      타일은 값이 바뀔 때만 다시 만든다(매 프레임 새로 그리지 않도록).
-   · 사진 무늬(픽셀화·하프톤) — 고른 사진을 네모 칸 또는 망점으로 다시 찍는다. */
+   · 사진 무늬(사진 흐림·픽셀화·하프톤) — 고른 사진을 흐리게 깔거나
+     네모 칸 또는 망점으로 다시 찍는다. */
 
 import { state, bgOpts } from 'app/state.js';
 
@@ -36,6 +37,7 @@ export function drawBackground(c, W, H) {
   c.save();
   c.globalAlpha = clamp(o.opacity, 0, 1);
   if (bp.kind === 'gradient') gradientBg(c, W, H, o);
+  else if (bp.kind === 'blur') photoBlur(c, W, H, o, bp.img);
   else if (bp.kind === 'pixel' || bp.kind === 'halftone') photoScreen(c, W, H, bp.kind, o, bp.img);
   else tiledBg(c, W, H, bp.kind, o);
   c.restore();
@@ -84,13 +86,6 @@ function tiledBg(c, W, H, kind, o) {
     } else if (kind === 'checker') {
       t.fillRect(0, 0, unit, unit);
       t.fillRect(unit, unit, unit, unit);
-    } else if (kind === 'gingham') {
-      // 세로·가로 띠를 반투명하게 겹쳐 교차점만 진해지는 깅엄 체크를 만든다.
-      const bw = Math.max(1, unit * clamp(weight, 0.02, 0.95));
-      t.globalAlpha = 0.55;
-      t.fillRect(0, 0, bw, tw);
-      t.fillRect(0, 0, tw, bw);
-      t.globalAlpha = 1;
     }
   }
 
@@ -104,6 +99,40 @@ function tiledBg(c, W, H, kind, o) {
 }
 
 /* ── 사진 무늬 ───────────────────────────── */
+
+/* 고른 사진을 흐리게 깐다. size 가 흐림 반경(px)이다.
+   blur 필터는 그림 가장자리를 투명하게 번지게 하므로, 반경만큼 넉넉히
+   키워 그려 번지는 자리가 캔버스 밖으로 나가게 한다. */
+function photoBlur(c, W, H, o, img) {
+  if (!img?.width) return;
+  clampBgPan(W, H);
+
+  const r = Math.max(0, o.size);
+  const z = coverZoom(img, W, H, o);
+  const iw = img.width * z;
+  const ih = img.height * z;
+  // 짧은 변 기준으로 사방에 2r 씩 더 나가도록 비율을 지킨 채 키운다.
+  const grow = 1 + (4 * r) / Math.max(1, Math.min(iw, ih));
+  const gw = iw * grow;
+  const gh = ih * grow;
+  const cx = W / 2 + o.x;
+  const cy = H / 2 + o.y;
+
+  c.save();
+  c.filter = [r > 0 ? `blur(${r}px)` : '', adjustFilter(o)].filter(Boolean).join(' ') || 'none';
+  c.drawImage(img, cx - gw / 2, cy - gh / 2, gw, gh);
+  c.restore();
+}
+
+/* 밝기·대비는 -1 ~ 1 로 받아 CSS 필터의 0 ~ 2 배로 옮긴다. */
+function adjustFilter(o) {
+  const b = clamp(o.brightness, -1, 1);
+  const ct = clamp(o.contrast, -1, 1);
+  const parts = [];
+  if (b) parts.push(`brightness(${(1 + b).toFixed(3)})`);
+  if (ct) parts.push(`contrast(${(1 + ct).toFixed(3)})`);
+  return parts.join(' ');
+}
 
 /* 격자만 각도대로 돌리고 사진은 그대로 둔다. 칸 자리를 캔버스 좌표로 되돌려
    거기서 색을 집으므로, 사진이 기울지 않고 칸 줄만 비스듬해진다.
@@ -203,7 +232,7 @@ const coverZoom = (img, W, H, o) =>
    덮고 있는 범위 밖으로는 밀리지 않게 잡아 둔다(사진 칸의 clampPan 과 같은 규칙). */
 export function clampBgPan(W, H) {
   const { kind, img } = state.bgPattern;
-  if (!img?.width || (kind !== 'pixel' && kind !== 'halftone')) return;
+  if (!img?.width || !['blur', 'pixel', 'halftone'].includes(kind)) return;
   const o = bgOpts();
   const z = coverZoom(img, W, H, o);
   const maxX = Math.max(0, (img.width * z - W) / 2);

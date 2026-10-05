@@ -12,7 +12,7 @@ const octx = overlay.getContext('2d');
 const box = document.getElementById('canvasBox');
 
 /* 선택 표시 색. CSS 의 --accent 와 같은 값을 쓴다. */
-const ACCENT = '#1f6b70';
+const ACCENT = '#1f6090';
 
 export const HANDLE = 9;        // 화면 기준 핸들 크기(px)
 export const ROTATE_OFFSET = 26;

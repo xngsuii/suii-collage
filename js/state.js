@@ -49,8 +49,8 @@ export const BG_PATTERNS = [
   { id: 'grid',     label: '모눈' },
   { id: 'dot',      label: '도트' },
   { id: 'checker',  label: '체커' },
-  { id: 'gingham',  label: '깅엄' },
   { id: 'gradient', label: '그라데이션' },
+  { id: 'blur',     label: '사진 흐림' },
   { id: 'pixel',    label: '픽셀화' },
   { id: 'halftone', label: '하프톤' },
 ];
@@ -63,7 +63,7 @@ export const FREE_RATIO = 'free';
    도트로 넘어가면 도트가 쓰던 값이 그대로 남아 있다.
    '기본값으로' 버튼은 그 무늬 칸만 이 표로 덮어쓴다. 고른 사진(img)은 함께 쓴다. */
 const BG_BASE = {
-  size: 40, weight: 0.5, angle: 0, color: '#1f6b70', opacity: 1,
+  size: 40, weight: 0.5, angle: 0, color: '#1f6090', opacity: 1,
   x: 0, y: 0, zoom: 1, tint: 0, brightness: 0, contrast: 0,
 };
 
@@ -71,8 +71,8 @@ export const BG_DEFAULTS = {
   grid:     { ...BG_BASE, size: 50, weight: 0.10 },
   dot:      { ...BG_BASE, size: 40, weight: 0.30 },
   checker:  { ...BG_BASE, size: 50 },
-  gingham:  { ...BG_BASE, size: 40 },
   gradient: { ...BG_BASE, angle: 90 },
+  blur:     { ...BG_BASE, size: 40 },
   pixel:    { ...BG_BASE, size: 15, weight: 1 },
   halftone: { ...BG_BASE, size: 15 , angle: 20 },
 };

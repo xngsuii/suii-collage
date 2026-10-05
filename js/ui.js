@@ -721,8 +721,11 @@ function bgPatternProps(bp) {
   if (bp.kind === 'none') return seg;
 
   const pixel = bp.kind === 'pixel';
-  const fromPhoto = pixel || bp.kind === 'halftone';
+  const blur = bp.kind === 'blur';
+  const fromPhoto = pixel || blur || bp.kind === 'halftone';
   const grad = bp.kind === 'gradient';
+  // 흐림은 격자가 없어 무늬 각도와 선 굵기가 할 일이 없다.
+  const plain = grad || blur;
   // 조절값은 무늬마다 따로 있다. 경로도 그 무늬 칸을 가리킨다.
   const o = bgOpts();
   const at = (field) => `bgPattern.by.${bp.kind}.${field}`;
@@ -730,12 +733,13 @@ function bgPatternProps(bp) {
   return `${seg}
     ${!fromPhoto ? '' : `
       <button class="btn" data-action="bgPatternImage" type="button">${bp.img ? '사진 바꾸기' : '사진 고르기'}</button>
-      ${bp.img ? '' : `<p class="block-note">${pixel ? '모자이크로' : '망점으로'} 찍을 사진을 고르세요.</p>`}`}
-    ${grad ? '' : slider(fromPhoto ? '칸 크기' : '무늬 크기', at('size'), o.size, fromPhoto ? 6 : 3, 240, 1)}
-    ${grad || bp.kind === 'checker' ? '' : slider(pixel ? '칸 채움' : fromPhoto ? '점 굵기' : '선·점 굵기',
+      ${bp.img ? '' : `<p class="block-note">${blur ? '흐리게 깔' : pixel ? '모자이크로 찍을' : '망점으로 찍을'} 사진을 고르세요.</p>`}`}
+    ${blur ? slider('흐림 정도', at('size'), o.size, 0, 240, 1)
+      : grad ? '' : slider(fromPhoto ? '칸 크기' : '무늬 크기', at('size'), o.size, fromPhoto ? 6 : 3, 240, 1)}
+    ${plain || bp.kind === 'checker' ? '' : slider(pixel ? '칸 채움' : fromPhoto ? '점 굵기' : '선·점 굵기',
       at('weight'), o.weight, 0.02, 1, 0.01)}
-    ${slider('각도 °', at('angle'), o.angle, 0, 359, 1)}
-    ${colorField(grad ? '번지는 색' : '무늬 색', at('color'), o.color)}
+    ${blur ? '' : slider('각도 °', at('angle'), o.angle, 0, 359, 1)}
+    ${blur ? '' : colorField(grad ? '번지는 색' : '무늬 색', at('color'), o.color)}
     ${pixel ? slider('무늬 색 섞기', at('tint'), o.tint, 0, 1, 0.01) : ''}
     ${!fromPhoto ? '' : `
       ${slider('밝기', at('brightness'), o.brightness, -1, 1, 0.01)}

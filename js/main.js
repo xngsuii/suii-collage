@@ -1,14 +1,16 @@
 /* 캔버스 조작(선택·이동·확대·회전)과 앱 초기화. */
 
 import {
-  state, makePhoto, makeText, makeShape, makeSticker,
+  state, bgOpts, makePhoto, makeText, makeShape, makeSticker,
   selectedLayer, removeLayer, duplicateLayer,
 } from 'app/state.js';
 import {
-  render, getLayout, art, overlay, box, HANDLE, rotateHandlePoint, measureText,
-  zoomViewAt, panView,
+  render, getLayout, art, overlay, box, HANDLE, rotateHandlePoint, rectRotateHandlePoint,
+  measureText, zoomViewAt, panView,
 } from 'app/render.js';
-import { hitCell, pickLayer, clampPan, layerCorners, snapPoint } from 'app/geometry.js';
+import {
+  hitCell, pickLayer, clampPan, layerCorners, rectCorners, snapPoint, defaultFree,
+} from 'app/geometry.js';
 import { setFullRes } from 'app/effects.js';
 import { pickImages } from 'app/files.js';
 import {
@@ -105,6 +107,21 @@ overlay.addEventListener('pointerdown', (e) => {
     }
   }
 
+  // 1-b) 자유 배치에서 고른 사진의 핸들. 사진도 요소처럼 끌고 돌린다.
+  const freePhoto = freeSelection();
+  if (freePhoto) {
+    const r = getLayout().rects[state.selection.index];
+    const handle = r && hitRectHandle(r, p);
+    if (handle) {
+      const f = freePhoto.free;
+      drag = handle === 'rotate'
+        ? { mode: 'freeRotate', photo: freePhoto, startAngle: angleToPoint(f, p) - f.rot }
+        : { mode: 'freeScale', photo: freePhoto, startDist: Math.max(4, distToPoint(f, p)), base: { w: f.w, h: f.h } };
+      capture(e.pointerId);
+      return;
+    }
+  }
+
   // 2) 레이어 선택 / 이동
   const hit = pickLayer(p.x, p.y);
   if (hit) {
@@ -117,16 +134,40 @@ overlay.addEventListener('pointerdown', (e) => {
 
   // 3) 사진 칸 선택 / 이동
   const idx = hitCell(getLayout().rects, p.x, p.y);
-  if (idx < 0) { state.selection = null; update(); return; }
+  if (idx < 0) {
+    state.selection = null;
+    // 아무것도 없는 바탕을 끌면 배경 무늬가 따라 움직인다.
+    if (state.bgPattern.kind !== 'none') {
+      drag = { mode: 'bgPan', lastX: e.clientX, lastY: e.clientY, k: p.k };
+      capture(e.pointerId);
+    }
+    update();
+    return;
+  }
 
   state.selection = { kind: 'cell', index: idx };
   const photo = state.photos[idx];
   if (!photo) { pendingFill = idx; update(); return; }
 
-  drag = { mode: 'pan', index: idx, startX: p.x, startY: p.y, panX: photo.panX, panY: photo.panY };
+  // 자유 배치에서는 끌면 사진이 움직인다. 틀 안에서 사진만 밀려면 Shift 를 누른다.
+  if (state.mode === 'free' && !e.shiftKey) {
+    const f = photo.free || (photo.free = defaultFree(photo, state.canvasW, state.canvasH));
+    drag = { mode: 'freeMove', photo, dx: f.cx - p.x, dy: f.cy - p.y };
+  } else {
+    drag = { mode: 'pan', index: idx, startX: p.x, startY: p.y, panX: photo.panX, panY: photo.panY };
+  }
   capture(e.pointerId);
   update();
 });
+
+/* 자유 배치에서 지금 고른 사진. 그 밖에는 null. */
+function freeSelection() {
+  if (state.mode !== 'free') return null;
+  const sel = state.selection;
+  if (sel?.kind !== 'cell') return null;
+  const photo = state.photos[sel.index];
+  return photo?.free ? photo : null;
+}
 
 /* 미리보기의 빈 칸(＋)을 탭하면 바로 사진을 고른다. */
 let lastFillAt = 0;
@@ -247,6 +288,18 @@ overlay.addEventListener('pointermove', (e) => {
     return;
   }
 
+  if (drag.mode === 'bgPan') {
+    // 화면에서 끈 거리를 캔버스 픽셀로 환산해 무늬를 그만큼 민다.
+    // 위치는 무늬마다 따로 들고 있으므로 지금 고른 무늬 칸에 적는다.
+    const o = bgOpts();
+    o.x += (e.clientX - drag.lastX) / drag.k;
+    o.y += (e.clientY - drag.lastY) / drag.k;
+    drag.lastX = e.clientX;
+    drag.lastY = e.clientY;
+    render();
+    return;
+  }
+
   const p = pointer(e);
 
   if (drag.mode === 'move') {
@@ -272,6 +325,21 @@ overlay.addEventListener('pointermove', (e) => {
     photo.panX = drag.panX + (p.x - drag.startX);
     photo.panY = drag.panY + (p.y - drag.startY);
     clampPan(photo, getLayout().rects[drag.index]);
+  } else if (drag.mode === 'freeMove') {
+    const f = drag.photo.free;
+    const { W, H } = getLayout();
+    const snapped = snapPoint(p.x + drag.dx, p.y + drag.dy, W, H);
+    f.cx = snapped.x;
+    f.cy = snapped.y;
+  } else if (drag.mode === 'freeScale') {
+    const f = drag.photo.free;
+    const k = Math.max(0.05, distToPoint(f, p) / drag.startDist);
+    f.w = Math.max(12, drag.base.w * k);
+    f.h = Math.max(12, drag.base.h * k);
+    clampPan(drag.photo, { x: 0, y: 0, w: f.w, h: f.h });
+  } else if (drag.mode === 'freeRotate') {
+    const f = drag.photo.free;
+    f.rot = normalizeAngle(angleToPoint(f, p) - drag.startAngle);
   }
 
   render();
@@ -338,6 +406,16 @@ function resizeUnderPointer(e) {
   const photo = idx >= 0 ? state.photos[idx] : null;
   if (!photo) return;
   state.selection = { kind: 'cell', index: idx };
+
+  // 자유 배치에서는 칸 자체가 사진 크기다. 그쪽을 키우는 게 자연스럽다.
+  if (state.mode === 'free' && photo.free) {
+    photo.free.w = Math.max(12, photo.free.w * step);
+    photo.free.h = Math.max(12, photo.free.h * step);
+    clampPan(photo, { x: 0, y: 0, w: photo.free.w, h: photo.free.h });
+    update();
+    return;
+  }
+
   photo.zoom = Math.min(4, Math.max(1, photo.zoom * step));
   clampPan(photo, getLayout().rects[idx]);
   update();
@@ -365,11 +443,21 @@ window.addEventListener('keydown', (e) => {
   }
 
   const nudge = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-  if (nudge && layer) {
+  if (!nudge) return;
+  const d = e.shiftKey ? 20 : 4;
+  if (layer) {
     e.preventDefault();
-    const d = e.shiftKey ? 20 : 4;
     layer.cx += nudge[0] * d;
     layer.cy += nudge[1] * d;
+    render();
+    return;
+  }
+  // 자유 배치에서는 고른 사진도 방향키로 조금씩 옮긴다.
+  const free = freeSelection();
+  if (free) {
+    e.preventDefault();
+    free.free.cx += nudge[0] * d;
+    free.free.cy += nudge[1] * d;
     render();
   }
 });
@@ -387,8 +475,22 @@ function hitHandle(layer, p) {
   return null;
 }
 
+/* 사진 칸(자유 배치)의 핸들. 요소와 같은 모양·같은 크기로 잡는다. */
+function hitRectHandle(r, p) {
+  const rot = rectRotateHandlePoint(r, p.k);
+  if (Math.hypot(rot.x - p.sx, rot.y - p.sy) <= HANDLE) return 'rotate';
+  for (const c of rectCorners(r)) {
+    if (Math.hypot(c.x * p.k - p.sx, c.y * p.k - p.sy) <= HANDLE) return 'corner';
+  }
+  return null;
+}
+
 const distTo = (layer, p) => Math.hypot(p.x - layer.cx, p.y - layer.cy);
 const angleTo = (layer, p) => Math.atan2(p.y - layer.cy, p.x - layer.cx) + Math.PI / 2;
+
+// 중심이 cx/cy 인 아무 것(요소든 사진 틀이든)에 쓸 수 있는 같은 계산.
+const distToPoint = distTo;
+const angleToPoint = angleTo;
 
 function normalizeAngle(a) {
   while (a > Math.PI) a -= Math.PI * 2;
@@ -401,17 +503,53 @@ function normalizeAngle(a) {
 async function addPhoto() {
   const imgs = await pickImages(true);
   if (!imgs.length) return;
-  for (const img of imgs) state.photos.push(makePhoto(img));
+  imgs.forEach((img, i) => {
+    const photo = makePhoto(img);
+    if (state.mode === 'free') placeFree(photo, i);
+    state.photos.push(photo);
+  });
   update();
+}
+
+/* 자유 배치에서 새 사진을 놓는 자리. 여러 장이면 조금씩 엇갈려 쌓인다. */
+function placeFree(photo, i) {
+  const W = state.canvasW;
+  const H = state.canvasH;
+  const f = defaultFree(photo, W, H);
+  const step = Math.min(W, H) * 0.06;
+  f.cx += ((i % 5) - 2) * step;
+  f.cy += ((i % 5) - 2) * step;
+  photo.free = f;
 }
 
 async function fillCell(index) {
   const [img] = await pickImages(false);
   if (!img) return;
   while (state.photos.length < index) state.photos.push(null);
-  state.photos[index] = makePhoto(img);
+
+  const old = state.photos[index];
+  const photo = makePhoto(img);
+  if (state.mode === 'free') {
+    // 교체해도 놓인 자리와 기울기는 그대로 두고, 가로 폭에 맞춰 높이만 다시 잡는다.
+    if (old?.free) {
+      photo.free = { ...old.free, h: old.free.w * (img.height / img.width) };
+    } else {
+      placeFree(photo, 0);
+    }
+  }
+  state.photos[index] = photo;
   state.selection = { kind: 'cell', index };
   refreshProps(true);
+  update();
+}
+
+/* 배경 무늬로 쓸 사진 */
+async function pickBgPattern() {
+  const [img] = await pickImages(false);
+  if (!img) return;
+  state.bgPattern.img = img;
+  // 아직 무늬를 안 골랐다면 바로 보이도록 하프톤으로 켜 준다.
+  if (!['pixel', 'halftone'].includes(state.bgPattern.kind)) state.bgPattern.kind = 'halftone';
   update();
 }
 
@@ -437,7 +575,7 @@ function addText() {
   update();
 }
 
-function addShape(shape) {
+function addShape(shape = 'rect') {
   const { W, H } = getLayout();
   const layer = makeShape(shape, W / 2, H / 2, Math.min(W, H) * 0.3);
   state.layers.push(layer);
@@ -485,7 +623,9 @@ function reset() {
 
 /* ── 초기화 ──────────────────────────────── */
 
-const actions = { addPhoto, addSticker, addText, addShape, fillCell, exportImage, reset };
+const actions = {
+  addPhoto, addSticker, addText, addShape, fillCell, pickBgPattern, exportImage, reset,
+};
 initLeftPanel(actions);
 initRightPanel(actions);
 initStageBar();

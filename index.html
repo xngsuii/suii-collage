@@ -14,9 +14,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <!-- 홈 화면 아래 이름. 길면 iOS 가 잘라 버린다. -->
 <meta name="apple-mobile-web-app-title" content="IMG Collage">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=21">
-<link rel="icon" href="icons/favicon.png?v=21" sizes="64x64" type="image/png">
-<link rel="manifest" href="manifest.webmanifest?v=21">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=26">
+<link rel="icon" href="icons/favicon.png?v=26" sizes="64x64" type="image/png">
+<link rel="manifest" href="manifest.webmanifest?v=26">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -24,18 +24,19 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@300;400;700&family=Noto+Serif+KR:wght@300;400;700&display=swap">
 <!-- ?v= 는 캐시 무효화용. 파일을 고쳐 배포할 때마다 아래 숫자를 전부 같이 올린다.
      (모듈까지 한 번에 갱신되도록 임포트 맵으로 묶어 뒀다) -->
-<link rel="stylesheet" href="css/fonts.css?v=21">
-<link rel="stylesheet" href="css/style.css?v=21">
+<link rel="stylesheet" href="css/fonts.css?v=26">
+<link rel="stylesheet" href="css/style.css?v=26">
 <script type="importmap">
 {
   "imports": {
-    "app/state.js":    "./js/state.js?v=21",
-    "app/effects.js":  "./js/effects.js?v=21",
-    "app/webfonts.js": "./js/webfonts.js?v=21",
-    "app/geometry.js": "./js/geometry.js?v=21",
-    "app/render.js":   "./js/render.js?v=21",
-    "app/files.js":    "./js/files.js?v=21",
-    "app/ui.js":       "./js/ui.js?v=21"
+    "app/state.js":    "./js/state.js?v=26",
+    "app/effects.js":  "./js/effects.js?v=26",
+    "app/webfonts.js": "./js/webfonts.js?v=26",
+    "app/geometry.js": "./js/geometry.js?v=26",
+    "app/pattern.js":  "./js/pattern.js?v=26",
+    "app/render.js":   "./js/render.js?v=26",
+    "app/files.js":    "./js/files.js?v=26",
+    "app/ui.js":       "./js/ui.js?v=26"
   }
 }
 </script>
@@ -64,6 +65,7 @@
             <div class="seg" id="modeSeg">
               <button class="seg-btn is-active" data-mode="auto" type="button">원본 그대로</button>
               <button class="seg-btn" data-mode="template" type="button">캔버스 비율</button>
+              <button class="seg-btn" data-mode="free" type="button">자유 배치</button>
             </div>
           </section>
 
@@ -79,7 +81,7 @@
           <section class="block is-hidden" id="ratioBlock">
             <h2 class="block-title">캔버스 비율</h2>
             <div class="chips" id="ratioChips"></div>
-            <div class="pair">
+            <div class="pair" id="ratioPair">
               <span class="pair-label">비율</span>
               <input type="number" id="ratioW" min="1" max="200" value="1">
               <span class="pair-sep">:</span>
@@ -92,7 +94,14 @@
               <input type="number" id="pxH" min="80" max="12000" step="10" value="1600">
               <span class="pair-unit">px</span>
             </div>
-            <p class="block-note">한쪽 값을 바꾸면 비율에 맞춰 나머지가 따라갑니다.</p>
+            <p class="block-note" id="ratioNote">한쪽 값을 바꾸면 비율에 맞춰 나머지가 따라갑니다.</p>
+          </section>
+
+          <section class="block is-hidden" id="freeBlock">
+            <h2 class="block-title">자유 배치</h2>
+            <p class="block-note">사진을 끌어 옮기고, 귀퉁이로 크기를, 위쪽 손잡이로 기울기를 바꿉니다.
+              겹쳐도 되고, 앞뒤 순서는 아래 썸네일을 끌어 바꿉니다.
+              Shift 를 누른 채 끌면 틀은 그대로 두고 사진만 안에서 움직입니다.</p>
           </section>
 
           <section class="block is-hidden" id="templateBlock">
@@ -101,54 +110,63 @@
             <p class="block-note" id="templateNote"></p>
           </section>
 
+          <!-- 사진 바깥에 둘러지는 테 하나로 '간격'과 '테두리'를 겸한다.
+               맞붙은 사진은 테 두 장 두께만큼 벌어지므로 간격이 따로 필요 없다. -->
           <section class="block">
-            <h2 class="block-title">간격 &amp; 테두리</h2>
+            <h2 class="block-title">사진 외곽선</h2>
             <label class="slider">
-              <span class="slider-label">사진 사이 간격</span>
+              <span class="slider-label">굵기</span>
               <span class="slider-row">
-                <input type="range" id="gap" min="0" max="120" value="0">
-                <input type="number" class="num" id="gapNum" min="0" max="120" step="1" value="0">
+                <input type="range" id="outlineW" min="0" max="60" value="0">
+                <input type="number" class="num" id="outlineWNum" min="0" max="60" step="1" value="0">
               </span>
             </label>
-            <label class="check">
-              <input type="checkbox" id="marginOn">
-              <span>바깥 여백도 같이 주기</span>
-            </label>
-            <label class="check">
-              <input type="checkbox" id="borderOn">
-              <span>테두리 선 보이기</span>
-            </label>
-            <div class="sub is-hidden" id="borderOpts">
-              <label class="slider">
-                <span class="slider-label">굵기</span>
-                <span class="slider-row">
-                  <input type="range" id="borderW" min="1" max="40" value="4">
-                    <input type="number" class="num" id="borderWNum" min="1" max="40" step="1" value="4">
-                </span>
-              </label>
-              <div class="field field-color">
-                <span>선 색상</span>
-                <span class="color-pair">
-                  <input type="text" class="hex" id="borderColorHex" maxlength="7" value="#000000">
-                  <input type="color" id="borderColor" value="#000000">
-                </span>
-              </div>
-              <label class="check">
-                <input type="checkbox" id="borderOuter" checked>
-                <span>가장 바깥 테두리도 그리기</span>
-              </label>
+            <div class="seg" id="outlineModeSeg">
+              <button class="seg-btn is-active" data-omode="fill" type="button">색으로 채우기</button>
+              <button class="seg-btn" data-omode="bg" type="button">비워 두기</button>
             </div>
+            <div class="field field-color" id="outlineColorField">
+              <span>외곽선 색</span>
+              <span class="color-pair">
+                <input type="text" class="hex" id="outlineColorHex" maxlength="7" value="#FFFFFF">
+                <input type="color" id="outlineColor" value="#ffffff">
+              </span>
+            </div>
+            <!-- 자유 배치에는 '바깥 여백'이라는 개념이 없어 JS 가 접어 둔다. -->
+            <label class="check" id="outlineOuterRow">
+              <input type="checkbox" id="outlineOuter" checked>
+              <span>캔버스 가장자리도 두르기</span>
+            </label>
+            <p class="block-note" id="outlineNote"></p>
           </section>
 
+          <!-- 무늬를 고르면 조절 항목이 길어진다. 접어 둘 수 있게 details 로 감쌌다. -->
           <section class="block">
-            <h2 class="block-title">배경</h2>
-            <div class="field field-color">
-              <span>배경색</span>
-              <span class="color-pair">
-                <input type="text" class="hex" id="bgColorHex" maxlength="7" value="#FFFFFF">
-                <input type="color" id="bgColor" value="#ffffff">
-              </span>
+            <details class="block-fold" id="bgFold">
+              <summary class="block-title">
+                <span>배경</span>
+                <span class="spacer"></span>
+                <span class="fold-hint" id="bgFoldHint"></span>
+              </summary>
+              <div class="fold-body">
+            <label class="check">
+              <input type="checkbox" id="bgOff">
+              <span>배경 사용 안 함 (투명)</span>
+            </label>
+            <p class="block-note is-hidden" id="bgOffNote">PNG 나 WEBP 로 내보내야 투명하게 남습니다. JPEG 는 검정으로 채워집니다.</p>
+            <div class="sub-plain" id="bgOpts">
+              <div class="field field-color">
+                <span>배경색</span>
+                <span class="color-pair">
+                  <input type="text" class="hex" id="bgColorHex" maxlength="7" value="#FFFFFF">
+                  <input type="color" id="bgColor" value="#ffffff">
+                </span>
+              </div>
+              <!-- 배경 무늬 — 고른 무늬에 따라 조절 항목이 달라지므로 JS 가 그린다. -->
+              <div class="props" id="bgProps"></div>
             </div>
+              </div>
+            </details>
           </section>
 
           <section class="block block-last">
@@ -187,7 +205,7 @@
             <input type="checkbox" id="snapOn"><span>스냅</span>
           </label>
           <span class="spacer"></span>
-          <span class="stage-tip">빈 칸 클릭해 넣기 · 두 번 눌러 교체 · 드래그로 이동 · 휠로 화면 이동 · Alt+휠로 크기 조절</span>
+          <span class="stage-tip" id="stageTip"></span>
           <!-- Ctrl+휠은 브라우저가 가로채는 경우가 있어, 배율은 버튼으로도 고를 수 있게 뒀다. -->
           <span class="zoom-bar" id="zoomBar">
             <button class="mini-btn" data-zoom="fit" type="button">맞춤</button>
@@ -215,8 +233,7 @@
                 <div class="menu-list is-hidden" id="addMenu" role="menu">
                   <button type="button" data-add="sticker" role="menuitem"><span>▣</span>스티커</button>
                   <button type="button" data-add="text" role="menuitem"><span>T</span>텍스트</button>
-                  <button type="button" data-add="rect" role="menuitem"><span>▭</span>사각형</button>
-                  <button type="button" data-add="circle" role="menuitem"><span>◯</span>원</button>
+                  <button type="button" data-add="shape" role="menuitem"><span>▭</span>도형</button>
                 </div>
               </div>
             </div>
@@ -254,6 +271,6 @@
 
 <input type="file" id="fileInput" accept="image/*" multiple hidden>
 
-<script type="module" src="js/main.js?v=21"></script>
+<script type="module" src="js/main.js?v=26"></script>
 </body>
 </html>

@@ -10,7 +10,6 @@ export const RATIOS = [
   { id: '16:9', w: 16, h: 9  },
   { id: '3:4',  w: 3,  h: 4  },
   { id: '4:3',  w: 4,  h: 3  },
-  { id: '2:3',  w: 2,  h: 3  },
 ];
 
 /* 템플릿 칸은 0..1 상대 좌표 [x, y, w, h] */
@@ -28,6 +27,55 @@ export const TEMPLATES = [
   { id: 'grid6',   cells: Array.from({ length: 6 }, (_, i) => [(i % 3) / 3, Math.floor(i / 3) / 2, 1/3, 1/2]) },
   { id: 'grid9',   cells: Array.from({ length: 9 }, (_, i) => [(i % 3) / 3, Math.floor(i / 3) / 3, 1/3, 1/3]) },
 ];
+
+/* 얹을 수 있는 도형. 예전에는 사각형·원을 따로 추가했지만 하나로 묶고 종류를 늘렸다. */
+export const SHAPES = [
+  { id: 'rect',     label: '사각형' },
+  { id: 'circle',   label: '원' },
+  { id: 'ring',     label: '속 빈 원' },
+  { id: 'triangle', label: '삼각형' },
+  { id: 'star',     label: '별' },
+  { id: 'heart',    label: '하트' },
+  { id: 'arrow',    label: '화살표' },
+  { id: 'sparkle',  label: '스파클' },
+];
+
+export const shapeLabel = (id) => (SHAPES.find((s) => s.id === id) || SHAPES[0]).label;
+
+/* 배경 무늬. 'none' 은 배경색만 쓴다는 뜻이고, 투명하게 두려면 state.bgOn 을 끈다.
+   'pixel'·'halftone' 은 따로 고른 사진을 각각 모자이크와 망점으로 다시 찍는다. */
+export const BG_PATTERNS = [
+  { id: 'none',     label: '단색' },
+  { id: 'grid',     label: '모눈' },
+  { id: 'dot',      label: '도트' },
+  { id: 'checker',  label: '체커' },
+  { id: 'gingham',  label: '깅엄' },
+  { id: 'gradient', label: '그라데이션' },
+  { id: 'pixel',    label: '픽셀화' },
+  { id: 'halftone', label: '하프톤' },
+];
+
+/* 가로세로를 비율에 묶지 않고 따로 정하는 상태. 비율 칩의 id 로도 쓴다. */
+export const FREE_RATIO = 'free';
+
+/* 무늬마다 '이 값이면 제 모양이 나온다' 싶은 기본값.
+   값은 무늬마다 따로 들고 있으므로(state.bgPattern.by) 모눈을 만지작거려도
+   도트로 넘어가면 도트가 쓰던 값이 그대로 남아 있다.
+   '기본값으로' 버튼은 그 무늬 칸만 이 표로 덮어쓴다. 고른 사진(img)은 함께 쓴다. */
+const BG_BASE = {
+  size: 40, weight: 0.5, angle: 0, color: '#1f6b70', opacity: 1,
+  x: 0, y: 0, zoom: 1, tint: 0, brightness: 0, contrast: 0,
+};
+
+export const BG_DEFAULTS = {
+  grid:     { ...BG_BASE, size: 50, weight: 0.10 },
+  dot:      { ...BG_BASE, size: 40, weight: 0.30 },
+  checker:  { ...BG_BASE, size: 50 },
+  gingham:  { ...BG_BASE, size: 40 },
+  gradient: { ...BG_BASE, angle: 90 },
+  pixel:    { ...BG_BASE, size: 15, weight: 1 },
+  halftone: { ...BG_BASE, size: 15 , angle: 20 },
+};
 
 /* weights 에 없는 굵기는 고를 수 없다(브라우저가 흉내내는 대신 단계를 숨긴다). */
 export const FONTS = [
@@ -57,7 +105,7 @@ let nextId = 1;
 export const newId = () => nextId++;
 
 export const state = {
-  mode: 'auto',            // 'auto' | 'template'
+  mode: 'auto',            // 'auto' | 'template' | 'free'
   direction: 'v',          // auto 모드에서 'h' | 'v'
   ratio: { w: 1, h: 1 },   // template 모드 캔버스 비율
   ratioId: '1:1',
@@ -65,10 +113,23 @@ export const state = {
   canvasH: BASE_SIZE,
   templateId: 'grid4',
 
-  gap: 0,
-  margin: false,           // 바깥 여백도 gap 만큼 줄지
+  /* 사진마다 바깥에 둘러지는 테. 사진이 맞붙는 자리에서는 두 장의 테가 만나
+     그만큼 서로 떨어지므로, 예전의 '간격' 과 '테두리' 를 이 하나가 겸한다.
+     mode 'fill' 은 테를 색으로 칠하고, 'bg' 는 비워 둬 배경이 비치게 한다. */
+  outline: { width: 0, mode: 'fill', color: '#ffffff', outer: true },
+
   bg: '#ffffff',
-  border: { show: false, width: 4, color: '#000000', outer: true },
+  bgOn: true,              // 끄면 배경색도 무늬도 깔지 않아 캔버스가 투명해진다
+
+  /* 배경색 위에 깔리는 무늬. 사진 뒤에 들어가고 내보낸 이미지에도 함께 나간다.
+     조절값은 무늬마다 따로(by) 들고 있고, 고른 사진(img)만 함께 쓴다.
+     size 는 무늬 한 칸(또는 망점 간격) 픽셀, weight 는 그 칸 대비 선·점 굵기,
+     x/y 는 무늬를 밀어 놓은 양(캔버스 바탕을 끌어도 움직인다). */
+  bgPattern: {
+    kind: 'none',
+    img: null,
+    by: Object.fromEntries(Object.entries(BG_DEFAULTS).map(([k, v]) => [k, { ...v }])),
+  },
 
   photos: [],              // makePhoto() 참고
   layers: [],              // sticker | text | shape
@@ -94,6 +155,10 @@ export const state = {
   exportFormat: 'png',
   quality: 0.92,
 };
+
+/* 지금 고른 무늬의 조절값. '단색'일 때는 쓸 일이 없지만 호출부가 편하도록
+   아무 칸이나 하나 돌려준다. */
+export const bgOpts = () => state.bgPattern.by[state.bgPattern.kind] || state.bgPattern.by.grid;
 
 export function template() {
   return TEMPLATES.find((t) => t.id === state.templateId) || TEMPLATES[5];
@@ -126,10 +191,16 @@ export function duplicateLayer(id) {
   return copy;
 }
 
-/* 비율을 유지한 채 픽셀 크기를 맞춘다. side 는 바꾼 쪽. */
+/* 비율을 유지한 채 픽셀 크기를 맞춘다. side 는 바꾼 쪽.
+   자유 비율이면 건드린 쪽만 바꾸고 다른 쪽은 그대로 둔다. */
 export function resizeCanvas(side, value) {
   const { w: rw, h: rh } = state.ratio;
   const v = Math.max(80, Math.min(MAX_SIZE, Math.round(value) || 80));
+  if (state.ratioId === FREE_RATIO) {
+    if (side === 'w') state.canvasW = v;
+    else state.canvasH = v;
+    return;
+  }
   if (side === 'w') {
     state.canvasW = v;
     state.canvasH = Math.max(80, Math.round(v * rh / rw));
@@ -137,6 +208,11 @@ export function resizeCanvas(side, value) {
     state.canvasH = v;
     state.canvasW = Math.max(80, Math.round(v * rw / rh));
   }
+}
+
+/* 가로·세로를 따로 정하는 상태로 바꾼다. 지금 크기는 그대로 둔다. */
+export function freeRatio() {
+  state.ratioId = FREE_RATIO;
 }
 
 /* 비율이 바뀌면 긴 변 길이를 유지한 채 다시 계산한다. */
@@ -171,7 +247,11 @@ export function movePhoto(from, to) {
 
 export function makePhoto(img) {
   // rot90 은 시계 방향 90도 횟수(0~3).
-  return { img, panX: 0, panY: 0, zoom: 1, rot90: 0, flipH: false, flipV: false, fx: newFx() };
+  // free 는 자유 배치 모드에서 쓰는 틀 { cx, cy, w, h, rot }. 다른 모드에서는 쓰지 않는다.
+  return {
+    img, panX: 0, panY: 0, zoom: 1, rot90: 0, flipH: false, flipV: false,
+    free: null, fx: newFx(),
+  };
 }
 
 export function makeText(cx, cy, size) {
@@ -191,10 +271,15 @@ export function makeText(cx, cy, size) {
 
 export function makeShape(shape, cx, cy, size) {
   return {
-    id: newId(), type: 'shape', shape,          // 'rect' | 'circle'
+    id: newId(), type: 'shape', shape,          // SHAPES 의 id
     cx, cy, rot: 0,
     w: size, h: size,
-    radius: 0,                                  // 짧은 변 대비 비율
+    lockRatio: false,                           // 켜면 한쪽을 바꿔도 비율이 유지된다
+    _ratio: 1,                                  // 비율을 잠근 순간의 세로/가로
+    radius: 0,                                  // 사각형 모서리 — 짧은 변 대비 비율
+    inner: 0.55,                                // 속 빈 원의 구멍 크기
+    points: 5,                                  // 별 꼭짓점 수
+    spike: 0.45,                                // 별 안쪽 반지름 비율 — 작을수록 뾰족하다
     fill: { mode: 'solid', c1: '#0038ff', c2: '#ffffff', a1: 1, a2: 0, angle: 90, opacity: 1 },
     stroke: { show: false, color: '#000000', width: 4 },
     shadow: { show: false, opacity: 0.32, blur: 0.014, angle: 0 },   // blur 는 캔버스 짧은 변 대비 비율, angle 은 빛 방향(0 = 위)

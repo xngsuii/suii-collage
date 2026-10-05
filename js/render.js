@@ -1,8 +1,9 @@
 /* 캔버스 그리기. 작품용 캔버스(#canvas)와 선택 표시용 오버레이(#overlay)를 나눠 그린다. */
 
 import { state, selectedLayer, MAX_VIEW, MIN_VIEW } from 'app/state.js';
-import { computeLayout, coverBox, layerCorners, toCanvas } from 'app/geometry.js';
+import { computeLayout, coverBox, layerCorners, rectCorners, toCanvas } from 'app/geometry.js';
 import { filtered, applyCanvasEffect } from 'app/effects.js';
+import { drawBackground } from 'app/pattern.js';
 
 const art = document.getElementById('canvas');
 const actx = art.getContext('2d');
@@ -35,16 +36,29 @@ export function render() {
 
   actx.setTransform(1, 0, 0, 1, 0, 0);
   actx.clearRect(0, 0, W, H);
-  actx.fillStyle = state.bg;
-  actx.fillRect(0, 0, W, H);
+  // 배경을 끄면 아무것도 깔지 않아 캔버스가 투명하게 남는다(PNG·WEBP 로만 살아남는다).
+  if (state.bgOn) {
+    actx.fillStyle = state.bg;
+    actx.fillRect(0, 0, W, H);
+    drawBackground(actx, W, H);
+  }
+
+  // 자유 배치는 칸이 겹칠 수 있다. 외곽선을 마지막에 몰아 그리면 아래 사진의 테가
+  // 위 사진 위로 올라오므로, 그때는 사진마다 바로 둘러 쌓인 순서를 지킨다.
+  const free = state.mode === 'free';
+  const outlined = state.outline.mode === 'fill' && state.outline.width > 0;
 
   rects.forEach((rect, i) => {
     const photo = state.photos[i];
-    if (photo) drawPhoto(photo, rect);
-    else drawPlaceholder(rect);
+    if (!photo) {
+      if (!free) drawPlaceholder(rect);     // 자유 배치에는 빈 칸이라는 것이 없다
+      return;
+    }
+    drawPhoto(photo, rect);
+    if (free && outlined) drawOutline(rect);
   });
 
-  if (state.border.show) drawBorders(rects, W, H);
+  if (!free && outlined) for (const rect of rects) drawOutline(rect);
 
   for (const layer of state.layers) drawLayer(layer);
 
@@ -63,6 +77,14 @@ function keepLayersInFrame(prev, next) {
   for (const l of state.layers) {
     l.cx *= sx;
     l.cy *= sy;
+  }
+  // 자유 배치의 사진 틀도 같은 비율로 따라간다.
+  for (const p of state.photos) {
+    if (!p?.free) continue;
+    p.free.cx *= sx;
+    p.free.cy *= sy;
+    p.free.w *= sx;
+    p.free.h *= sy;
   }
 }
 
@@ -173,11 +195,13 @@ function drawPhoto(photo, rect) {
   const b = coverBox(photo.img, { x: -cw / 2, y: -ch / 2, w: cw, h: ch }, photo.zoom, panX, panY);
 
   actx.save();
+  actx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+  // 자유 배치에서 기울인 틀. 자르는 영역도 같이 기울어야 한다.
+  if (rect.rot) actx.rotate(rect.rot);
   actx.beginPath();
-  actx.rect(rect.x, rect.y, rect.w, rect.h);
+  actx.rect(-rect.w / 2, -rect.h / 2, rect.w, rect.h);
   actx.clip();
 
-  actx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
   if (q) actx.rotate((q * Math.PI) / 2);
   if (fh < 0 || fv < 0) actx.scale(fh, fv);
 
@@ -209,18 +233,18 @@ function drawPlaceholder(rect) {
   actx.restore();
 }
 
-function drawBorders(rects, W, H) {
-  const { width, color, outer } = state.border;
+/* 사진 바깥에 둘러지는 테.
+   선을 칸 경계에서 바깥쪽으로만 나가게 그어야(중심을 경계 밖 width/2 에 두어야)
+   사진을 깎아먹지 않는다. 맞붙은 두 칸은 각자 width 씩 내보내 사이가 꼭 채워진다. */
+function drawOutline(r) {
+  const w = state.outline.width;
   actx.save();
-  actx.strokeStyle = color;
-  actx.lineWidth = width;
+  actx.strokeStyle = state.outline.color;
+  actx.lineWidth = w;
   actx.lineJoin = 'miter';
-  for (const r of rects) {
-    actx.strokeRect(r.x + width / 2, r.y + width / 2, r.w - width, r.h - width);
-  }
-  if (outer) {
-    actx.strokeRect(width / 2, width / 2, W - width, H - width);
-  }
+  actx.translate(r.x + r.w / 2, r.y + r.h / 2);
+  if (r.rot) actx.rotate(r.rot);
+  actx.strokeRect(-(r.w + w) / 2, -(r.h + w) / 2, r.w + w, r.h + w);
   actx.restore();
 }
 
@@ -357,14 +381,88 @@ function drawShape(layer) {
   actx.restore();
 }
 
+/* 도형 윤곽. 모두 가운데를 원점으로 두고 w × h 상자 안에 들어간다.
+   하트만 조절점이 상자를 살짝 넘겨 잡혀 있다(그래야 상자를 꽉 채운다). */
 function shapePath(c, layer, w, h) {
+  const hw = w / 2;
+  const hh = h / 2;
   c.beginPath();
-  if (layer.shape === 'circle') {
-    c.ellipse(0, 0, w / 2, h / 2, 0, 0, Math.PI * 2);
-  } else {
-    const r = Math.min(w, h) * Math.min(0.5, layer.radius);
-    c.roundRect(-w / 2, -h / 2, w, h, r);
+
+  switch (layer.shape) {
+    case 'circle':
+      c.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
+      break;
+
+    case 'ring': {
+      // 바깥은 시계 방향, 안쪽은 반대 방향으로 그려 가운데가 뚫린다.
+      const t = Math.min(0.95, Math.max(0.02, layer.inner ?? 0.55));
+      c.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2, false);
+      c.ellipse(0, 0, hw * t, hh * t, 0, 0, Math.PI * 2, true);
+      break;
+    }
+
+    case 'triangle':
+      c.moveTo(0, -hh);
+      c.lineTo(hw, hh);
+      c.lineTo(-hw, hh);
+      break;
+
+    case 'star': {
+      const n = Math.max(3, Math.min(12, Math.round(layer.points ?? 5)));
+      const ir = Math.min(0.9, Math.max(0.1, layer.spike ?? 0.45));
+      for (let i = 0; i < n * 2; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / n;
+        const k = i % 2 ? ir : 1;
+        const x = Math.cos(a) * hw * k;
+        const y = Math.sin(a) * hh * k;
+        if (i) c.lineTo(x, y);
+        else c.moveTo(x, y);
+      }
+      break;
+    }
+
+    case 'sparkle': {
+      // 네 갈래 반짝임. 꼭짓점 사이를 가운데로 당겨 허리가 가늘어진다.
+      const waist = 0.18;
+      c.moveTo(0, -hh);
+      for (let i = 0; i < 4; i++) {
+        const a0 = -Math.PI / 2 + (i * Math.PI) / 2;
+        const a1 = a0 + Math.PI / 2;
+        const am = a0 + Math.PI / 4;
+        c.quadraticCurveTo(
+          Math.cos(am) * hw * waist, Math.sin(am) * hh * waist,
+          Math.cos(a1) * hw, Math.sin(a1) * hh,
+        );
+      }
+      break;
+    }
+
+    case 'heart':
+      c.moveTo(0, hh * 0.98);
+      c.bezierCurveTo(-hw * 1.32, hh * 0.08, -hw * 0.72, -hh * 1.18, 0, -hh * 0.42);
+      c.bezierCurveTo(hw * 0.72, -hh * 1.18, hw * 1.32, hh * 0.08, 0, hh * 0.98);
+      break;
+
+    case 'arrow': {
+      // 오른쪽을 가리킨다. 방향은 회전으로 맞춘다.
+      const bw = hh * 0.42;        // 몸통 두께의 절반
+      const head = hw * 0.7;       // 머리 길이
+      c.moveTo(hw, 0);
+      c.lineTo(hw - head, -hh);
+      c.lineTo(hw - head, -bw);
+      c.lineTo(-hw, -bw);
+      c.lineTo(-hw, bw);
+      c.lineTo(hw - head, bw);
+      c.lineTo(hw - head, hh);
+      break;
+    }
+
+    default: {
+      const r = Math.min(w, h) * Math.min(0.5, layer.radius);
+      c.roundRect(-hw, -hh, w, h, r);
+    }
   }
+
   c.closePath();
 }
 
@@ -553,10 +651,20 @@ export function drawOverlay() {
   if (sel.kind === 'cell') {
     const r = lastLayout.rects[sel.index];
     if (!r) return;
+    const pts = rectCorners(r).map((p) => ({ x: p.x * k, y: p.y * k }));
     octx.strokeStyle = ACCENT;
+
+    // 자유 배치에서는 사진도 요소처럼 끌고 돌리므로 같은 핸들을 붙인다.
+    if (state.mode === 'free' && state.photos[sel.index]) {
+      octx.lineWidth = 1.5;
+      outlinePoly(pts);
+      drawHandles(pts, rectRotateHandlePoint(r, k));
+      return;
+    }
+
     octx.lineWidth = 2;
     octx.setLineDash([5, 4]);
-    octx.strokeRect(r.x * k + 1, r.y * k + 1, r.w * k - 2, r.h * k - 2);
+    outlinePoly(pts);
     octx.setLineDash([]);
     return;
   }
@@ -565,24 +673,28 @@ export function drawOverlay() {
   if (!layer) return;
 
   const pts = layerCorners(layer).map((p) => ({ x: p.x * k, y: p.y * k }));
-
   octx.strokeStyle = ACCENT;
   octx.lineWidth = 1.5;
+  outlinePoly(pts);
+  drawHandles(pts, rotateHandlePoint(layer, k));
+}
+
+function outlinePoly(pts) {
   octx.beginPath();
   octx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < 4; i++) octx.lineTo(pts[i].x, pts[i].y);
+  for (let i = 1; i < pts.length; i++) octx.lineTo(pts[i].x, pts[i].y);
   octx.closePath();
   octx.stroke();
+}
 
-  // 회전 핸들
-  const rot = rotateHandlePoint(layer, k);
+/* 네 귀퉁이 점과, 위쪽 변에서 뻗어 나온 회전 손잡이. */
+function drawHandles(pts, rot) {
   const topMid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
   octx.beginPath();
   octx.moveTo(topMid.x, topMid.y);
   octx.lineTo(rot.x, rot.y);
   octx.stroke();
   dot(rot.x, rot.y, true);
-
   for (const p of pts) dot(p.x, p.y, false);
 }
 
@@ -628,6 +740,15 @@ export function rotateHandlePoint(layer, k) {
   const local = { x: 0, y: -layer._h / 2 - ROTATE_OFFSET / k };
   const p = toCanvas(layer, local.x, local.y);
   return { x: p.x * k, y: p.y * k };
+}
+
+/* 사진 칸(자유 배치)의 회전 핸들 */
+export function rectRotateHandlePoint(r, k) {
+  const a = r.rot || 0;
+  const ly = -r.h / 2 - ROTATE_OFFSET / k;
+  const x = r.x + r.w / 2 - ly * Math.sin(a);
+  const y = r.y + r.h / 2 + ly * Math.cos(a);
+  return { x: x * k, y: y * k };
 }
 
 export { art, overlay, box };

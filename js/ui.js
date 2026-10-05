@@ -1,12 +1,15 @@
 /* 좌/우 패널 UI. 상태를 바꾸고 다시 그리도록 요청한다. */
 
 import {
-  state, RATIOS, TEMPLATES, KIND_LABEL, WEIGHT_LABEL,
-  template, selectedLayer, removeLayer, duplicateLayer, resizeCanvas, applyRatio, movePhoto,
+  state, RATIOS, TEMPLATES, SHAPES, BG_PATTERNS, BG_DEFAULTS, bgOpts,
+  KIND_LABEL, WEIGHT_LABEL, FREE_RATIO,
+  template, shapeLabel, selectedLayer, removeLayer, duplicateLayer,
+  resizeCanvas, applyRatio, freeRatio, movePhoto,
 } from 'app/state.js';
 import { render, getLayout, fitView, setViewScale, viewRatio, fitRatio } from 'app/render.js';
-import { clampPan } from 'app/geometry.js';
+import { clampPan, photoSize, seedFreeBoxes } from 'app/geometry.js';
 import { EFFECTS } from 'app/effects.js';
+import { clampBgPan } from 'app/pattern.js';
 import { allFonts, findFont, addWebFont } from 'app/webfonts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -15,6 +18,7 @@ const photoPropsEl = $('photoProps');
 const layerListEl = $('layerList');
 const thumbsEl = $('thumbs');
 const photoFxEl = $('photoFx');
+const bgPropsEl = $('bgProps');
 
 /* ── 슬라이더 채움 표시 ──────────────────── */
 
@@ -90,6 +94,7 @@ export function update() {
   syncZoomBar();
   refreshProps();
   refreshPhotoFx();
+  refreshBgProps();
   refreshThumbs();
   refreshLayerList();
   refreshMeta();
@@ -115,7 +120,9 @@ export function refreshThumbs() {
     b.className = 'thumb'
       + (photo ? '' : ' thumb-empty')
       + (sel?.kind === 'cell' && sel.index === i ? ' is-active' : '');
-    b.title = `${i + 1}번 칸${photo ? '' : ' (비어 있음)'}`;
+    b.title = state.mode === 'free'
+      ? `${i + 1}번째 사진 (뒤에 있을수록 위에 그려짐)`
+      : `${i + 1}번 칸${photo ? '' : ' (비어 있음)'}`;
 
     if (photo) {
       const img = document.createElement('img');
@@ -239,11 +246,23 @@ function shiftThumbs() {
   });
 }
 
+/* 미리보기 아래 안내문 — 모드마다 되는 조작이 달라 문구도 갈라 둔다. */
+const STAGE_TIPS = {
+  auto: '드래그로 사진 속 이동 · 두 번 눌러 교체 · 휠로 화면 이동 · Alt+휠로 확대',
+  template: '빈 칸 클릭해 넣기 · 두 번 눌러 교체 · 드래그로 사진 속 이동 · Alt+휠로 확대',
+  free: '드래그로 옮기기 · 귀퉁이로 크기 · 위 손잡이로 기울기 · Shift+드래그로 사진 속 이동',
+};
+
 function refreshMeta() {
   const { W, H } = getLayout();
+  const size = `${W} × ${H} px`;
+  const ratio = state.ratioId === FREE_RATIO ? '자유 비율' : state.ratioId;
   $('windowMeta').textContent = state.mode === 'template'
-    ? `${state.ratioId} · ${W} × ${H} px`
-    : `원본 그대로 · ${state.direction === 'h' ? '가로' : '세로'} · ${W} × ${H} px`;
+    ? `${ratio} · ${size}`
+    : state.mode === 'free'
+      ? `자유 배치 · ${ratio} · ${size}`
+      : `원본 그대로 · ${state.direction === 'h' ? '가로' : '세로'} · ${size}`;
+  $('stageTip').textContent = STAGE_TIPS[state.mode] || '';
   if (state.mode === 'template') updateTemplateNote();
 }
 
@@ -255,10 +274,13 @@ export function initLeftPanel(actions) {
   buildTemplates();
 
   segment($('modeSeg'), 'mode', (v) => {
+    // 자유 배치로 넘어갈 때 지금 보고 있는 자리를 물려받으므로 먼저 재 둔다.
+    const prev = getLayout();
     state.mode = v;
     state.selection = null;
-    // 원본 그대로 모드에는 빈 칸 개념이 없으므로 빈 자리를 눌러 없앤다.
-    if (v === 'auto') state.photos = state.photos.filter(Boolean);
+    if (v === 'free') seedFreeBoxes(prev);
+    // 원본 그대로·자유 배치에는 빈 칸 개념이 없으므로 빈 자리를 눌러 없앤다.
+    if (v !== 'template') state.photos = state.photos.filter(Boolean);
     syncModeBlocks();
     update();
   });
@@ -271,24 +293,23 @@ export function initLeftPanel(actions) {
   $('pxW').addEventListener('change', (e) => { resizeCanvas('w', Number(e.target.value)); syncCanvasFields(); update(); });
   $('pxH').addEventListener('change', (e) => { resizeCanvas('h', Number(e.target.value)); syncCanvasFields(); update(); });
 
-  rangeControl($('gap'), $('gapNum'), (v) => { state.gap = v; update(); });
-  $('marginOn').addEventListener('change', (e) => { state.margin = e.target.checked; update(); });
+  rangeControl($('outlineW'), $('outlineWNum'), (v) => { state.outline.width = v; syncOutlineBlock(); update(); });
+  $('outlineOuter').addEventListener('change', (e) => { state.outline.outer = e.target.checked; update(); });
+  bindStaticColor($('outlineColor'), $('outlineColorHex'), (v) => { state.outline.color = v; update(); });
 
-  $('borderOn').addEventListener('change', (e) => {
-    state.border.show = e.target.checked;
-    $('borderOpts').classList.toggle('is-hidden', !e.target.checked);
+  segment($('outlineModeSeg'), 'omode', (v) => { state.outline.mode = v; syncOutlineBlock(); update(); });
+
+  $('bgOff').addEventListener('change', (e) => {
+    state.bgOn = !e.target.checked;
+    syncBgBlock();
     update();
   });
 
-  rangeControl($('borderW'), $('borderWNum'), (v) => { state.border.width = v; update(); });
-  $('borderOuter').addEventListener('change', (e) => { state.border.outer = e.target.checked; update(); });
-
-  bindStaticColor($('borderColor'), $('borderColorHex'), (v) => { state.border.color = v; update(); });
   bindStaticColor($('bgColor'), $('bgColorHex'), (v) => { state.bg = v; update(); });
 
   $('addPhoto').addEventListener('click', actions.addPhoto);
 
-  for (const el of [photoPropsEl, photoFxEl]) {
+  for (const el of [photoPropsEl, photoFxEl, bgPropsEl]) {
     el.addEventListener('input', onPropInput);
     el.addEventListener('change', onNumCommit);
     el.addEventListener('click', (e) => onPropClick(e, actions));
@@ -297,7 +318,29 @@ export function initLeftPanel(actions) {
   initThumbReorder();
 
   syncModeBlocks();
+  syncOutlineBlock();
+  syncBgBlock();
   syncCanvasFields();
+}
+
+/* 외곽선 블록 — 비워 두는 방식이면 색을 고를 이유가 없다. */
+function syncOutlineBlock() {
+  const { width, mode } = state.outline;
+  $('outlineColorField').classList.toggle('is-hidden', mode !== 'fill');
+  $('outlineNote').textContent = width === 0
+    ? '사진 바깥에 둘러지는 테입니다. 굵기를 올리면 사진이 그만큼 서로 떨어집니다.'
+    : mode === 'fill'
+      ? `맞붙은 사진 사이는 테 두 장이 만나 ${width * 2}px 로 보입니다.`
+      : `테 자리를 비워 둬 배경이 비칩니다. 사진 사이는 ${width * 2}px 입니다.`;
+}
+
+/* 배경을 끄면 색도 무늬도 쓸 일이 없다.
+   접어 뒀을 때도 무엇이 깔려 있는지는 제목 옆에 적어 둔다. */
+function syncBgBlock() {
+  $('bgOpts').classList.toggle('is-hidden', !state.bgOn);
+  $('bgOffNote').classList.toggle('is-hidden', state.bgOn);
+  const kind = BG_PATTERNS.find((p) => p.id === state.bgPattern.kind);
+  $('bgFoldHint').textContent = state.bgOn ? (kind?.label || '') : '사용 안 함';
 }
 
 function onRatioInput() {
@@ -310,6 +353,11 @@ function onRatioInput() {
 }
 
 function syncCanvasFields() {
+  const free = state.ratioId === FREE_RATIO;
+  $('ratioPair').classList.toggle('is-hidden', free);
+  $('ratioNote').textContent = free
+    ? '가로와 세로를 따로 정합니다.'
+    : '한쪽 값을 바꾸면 비율에 맞춰 나머지가 따라갑니다.';
   $('ratioW').value = state.ratio.w;
   $('ratioH').value = state.ratio.h;
   $('pxW').value = state.canvasW;
@@ -317,11 +365,16 @@ function syncCanvasFields() {
 }
 
 function syncModeBlocks() {
-  const isTemplate = state.mode === 'template';
-  $('autoBlock').classList.toggle('is-hidden', isTemplate);
-  $('ratioBlock').classList.toggle('is-hidden', !isTemplate);
-  $('templateBlock').classList.toggle('is-hidden', !isTemplate);
-  if (isTemplate) updateTemplateNote();
+  const m = state.mode;
+  // 캔버스 크기를 직접 정하는 모드 — 템플릿과 자유 배치.
+  const sized = m === 'template' || m === 'free';
+  $('autoBlock').classList.toggle('is-hidden', m !== 'auto');
+  $('ratioBlock').classList.toggle('is-hidden', !sized);
+  $('templateBlock').classList.toggle('is-hidden', m !== 'template');
+  $('freeBlock').classList.toggle('is-hidden', m !== 'free');
+  // 자유 배치에는 '캔버스 가장자리 여백'이라는 개념이 없다.
+  $('outlineOuterRow').classList.toggle('is-hidden', m === 'free');
+  if (m === 'template') updateTemplateNote();
 }
 
 function updateTemplateNote() {
@@ -336,20 +389,25 @@ function updateTemplateNote() {
 function buildRatioChips() {
   const wrap = $('ratioChips');
   wrap.innerHTML = '';
-  for (const r of RATIOS) {
+
+  const chip = (id, label, pick) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'chip' + (r.id === state.ratioId ? ' is-active' : '');
-    b.dataset.ratio = r.id;
-    b.textContent = r.id;
+    b.className = 'chip' + (id === state.ratioId ? ' is-active' : '');
+    b.dataset.ratio = id;
+    b.textContent = label;
     b.addEventListener('click', () => {
-      applyRatio(r.w, r.h);
-      markActive(wrap, '.chip', (el) => el.dataset.ratio === r.id);
+      pick();
+      markActive(wrap, '.chip', (el) => el.dataset.ratio === id);
       syncCanvasFields();
       update();
     });
     wrap.appendChild(b);
-  }
+  };
+
+  for (const r of RATIOS) chip(r.id, r.id, () => applyRatio(r.w, r.h));
+  // 비율에 묶지 않고 가로·세로를 따로 정하는 칸.
+  chip(FREE_RATIO, '자유', freeRatio);
 }
 
 function buildTemplates() {
@@ -443,7 +501,8 @@ function initAddMenu(actions) {
     const kind = item.dataset.add;
     if (kind === 'sticker') actions.addSticker();
     else if (kind === 'text') actions.addText();
-    else actions.addShape(kind);
+    // 도형은 한 항목으로 묶여 있다. 종류는 속성 패널에서 고른다.
+    else actions.addShape();
   });
 
   document.addEventListener('click', (e) => {
@@ -536,6 +595,9 @@ function cellProps(index) {
     return `<p class="block-note">이 칸에 넣을 사진을 고르세요.</p>
       <button class="btn" data-action="fillCell" type="button">사진 넣기</button>`;
   }
+  const free = state.mode === 'free' ? photo.free : null;
+  const span = Math.max(state.canvasW, state.canvasH);
+
   return `${slider('확대', 'zoom', photo.zoom, 1, 4, 0.01)}
     <div class="switch-pair">
       ${switchRow('좌우 반전', 'flipH', photo.flipH)}
@@ -543,6 +605,17 @@ function cellProps(index) {
       <button class="mini-btn rotate-btn" data-action="rotate90" type="button"
         title="시계 방향으로 90° 회전">↻ 회전</button>
     </div>
+    ${!free ? '' : `<div class="prop-group">
+      ${slider('틀 가로', 'free.w', free.w, 20, span, 1)}
+      ${slider('틀 세로', 'free.h', free.h, 20, span, 1)}
+      ${slider('기울기 °', 'free.rot', (free.rot * 180) / Math.PI, -180, 180, 1,
+        { reset: 'resetFreeRot', scale: Math.PI / 180 })}
+      <button class="btn" data-action="fitFreeBox" type="button">원본 비율로 맞춤</button>
+      <div class="field-row">
+        <button class="btn" data-action="photoFront" type="button">맨 앞으로</button>
+        <button class="btn" data-action="photoBack" type="button">맨 뒤로</button>
+      </div>
+    </div>`}
     <div class="field-row">
       <button class="btn" data-action="fillCell" type="button">교체</button>
       <button class="btn" data-action="resetPan" type="button">맞춤</button>
@@ -552,11 +625,13 @@ function cellProps(index) {
 
 /* 오른쪽에 스위치가 붙은 한 줄.
    label 로 줄 전체를 감싸면 글자를 눌러도 토글이 되므로, label 은 스위치에만 씌운다. */
+/* data-keep 은 '이 체크박스는 하위 옵션을 여닫지 않는다'는 표시.
+   패널을 다시 만들면 방금 만든 요소로 갈려 스위치가 움직이는 모습이 사라진다. */
 function switchRow(label, path, on) {
   return `<div class="switch-row">
     <span>${label}</span>
     <label class="switch-hit">
-      <input type="checkbox" data-path="${path}" ${on ? 'checked' : ''}>
+      <input type="checkbox" data-path="${path}" data-keep="1" ${on ? 'checked' : ''}>
       <i class="switch"></i>
     </label>
   </div>`;
@@ -568,15 +643,22 @@ function switchRow(label, path, on) {
    칸을 고르지 않아도 방식을 바꿀 수 있도록 사진 블록에 늘 띄워 둔다. */
 let fxKey = '';
 
-/* 그레인은 다른 효과 위에 겹쳐 쓰는 것이라 목록에서 빼고 따로 조절하게 뒀다.
-   강도는 효과마다 따로 저장하므로 경로에 현재 효과 이름이 들어간다. */
+/* 그레인과 밝기·대비는 다른 효과 위에 겹쳐 쓰는 것이라 목록에서 빼고 따로 조절하게 뒀다.
+   강도는 효과마다 따로 저장하므로 경로에 현재 효과 이름이 들어간다.
+   픽셀화·하프톤에서는 그 강도가 사실상 칸 크기라 이름만 바꿔 보여 준다. */
+const AMOUNT_LABEL = { pixel: '칸 크기', half: '칸 크기' };
+
 function effectControls(fx, prefix) {
   const btns = EFFECTS.map((e) => `
     <button class="seg-btn ${fx.mode === e.id ? 'is-active' : ''}"
       data-set="${prefix}.mode" data-value="${e.id}" type="button">${e.label}</button>`).join('');
 
   return `<div class="seg seg-wrap">${btns}</div>
-    ${fx.mode === 'none' ? '' : slider('강도', `${prefix}.amounts.${fx.mode}`, fx.amounts[fx.mode], 0, 1, 0.01)}
+    ${fx.mode === 'none' ? '' : slider(AMOUNT_LABEL[fx.mode] || '강도',
+      `${prefix}.amounts.${fx.mode}`, fx.amounts[fx.mode], 0, 1, 0.01)}
+    ${fx.mode === 'half' ? slider('점 굵기', `${prefix}.dot`, fx.dot, 0.2, 1.6, 0.01) : ''}
+    ${slider('밝기', `${prefix}.brightness`, fx.brightness, -1, 1, 0.01)}
+    ${slider('대비', `${prefix}.contrast`, fx.contrast, -1, 1, 0.01)}
     ${slider('필름 그레인', `${prefix}.grain`, fx.grain, 0, 1, 0.01)}`;
 }
 
@@ -615,6 +697,57 @@ export function refreshPhotoFx(force = false) {
 
   photoFxEl.innerHTML = group('효과', modeSeg + note + body);
   paintAllRanges(photoFxEl);
+}
+
+/* ── 배경 무늬 ───────────────────────────── */
+
+/* 고른 무늬에 따라 쓸 만한 항목만 남긴다. 값은 모두 state.bgPattern 에 바로 들어간다. */
+let bgKey = '';
+
+export function refreshBgProps(force = false) {
+  const bp = state.bgPattern;
+  const key = `${bp.kind}|${bp.img ? 1 : 0}`;
+  if (!force && key === bgKey) return;
+  bgKey = key;
+  bgPropsEl.innerHTML = bgPatternProps(bp);
+  paintAllRanges(bgPropsEl);
+  syncBgBlock();
+}
+
+function bgPatternProps(bp) {
+  const seg = `<div class="seg seg-wrap">${BG_PATTERNS.map((p) => `
+    <button class="seg-btn ${bp.kind === p.id ? 'is-active' : ''}"
+      data-set="bgPattern.kind" data-value="${p.id}" type="button">${p.label}</button>`).join('')}</div>`;
+  if (bp.kind === 'none') return seg;
+
+  const pixel = bp.kind === 'pixel';
+  const fromPhoto = pixel || bp.kind === 'halftone';
+  const grad = bp.kind === 'gradient';
+  // 조절값은 무늬마다 따로 있다. 경로도 그 무늬 칸을 가리킨다.
+  const o = bgOpts();
+  const at = (field) => `bgPattern.by.${bp.kind}.${field}`;
+
+  return `${seg}
+    ${!fromPhoto ? '' : `
+      <button class="btn" data-action="bgPatternImage" type="button">${bp.img ? '사진 바꾸기' : '사진 고르기'}</button>
+      ${bp.img ? '' : `<p class="block-note">${pixel ? '모자이크로' : '망점으로'} 찍을 사진을 고르세요.</p>`}`}
+    ${grad ? '' : slider(fromPhoto ? '칸 크기' : '무늬 크기', at('size'), o.size, fromPhoto ? 6 : 3, 240, 1)}
+    ${grad || bp.kind === 'checker' ? '' : slider(pixel ? '칸 채움' : fromPhoto ? '점 굵기' : '선·점 굵기',
+      at('weight'), o.weight, 0.02, 1, 0.01)}
+    ${slider('각도 °', at('angle'), o.angle, 0, 359, 1)}
+    ${colorField(grad ? '번지는 색' : '무늬 색', at('color'), o.color)}
+    ${pixel ? slider('무늬 색 섞기', at('tint'), o.tint, 0, 1, 0.01) : ''}
+    ${!fromPhoto ? '' : `
+      ${slider('밝기', at('brightness'), o.brightness, -1, 1, 0.01)}
+      ${slider('대비', at('contrast'), o.contrast, -1, 1, 0.01)}
+      ${slider('사진 확대', at('zoom'), o.zoom, 1, 4, 0.01)}`}
+    ${slider('불투명도', at('opacity'), o.opacity, 0.05, 1, 0.01)}
+    ${grad ? '' : `
+      ${slider('가로 위치', at('x'), o.x, -3000, 3000, 1)}
+      ${slider('세로 위치', at('y'), o.y, -3000, 3000, 1)}
+      <p class="block-note">캔버스의 빈 바탕을 끌어도 무늬가 따라 움직입니다.${
+        fromPhoto ? ' 사진은 늘 캔버스를 꽉 채운 채로만 움직입니다.' : ''}</p>`}
+    <button class="btn btn-ghost" data-action="resetBgPattern" type="button">기본값으로</button>`;
 }
 
 function layerProps(l) {
@@ -732,9 +865,30 @@ function textProps(l) {
 
 /* ── 도형 ────────────────────────────────── */
 
+/* 도형 종류 고르기. 아이콘은 캔버스에 그려지는 모양을 작게 흉내낸 것. */
+const SHAPE_ICON = {
+  rect: '<rect x="3" y="3" width="14" height="14"/>',
+  circle: '<circle cx="10" cy="10" r="7"/>',
+  ring: '<circle cx="10" cy="10" r="5.6" fill="none" stroke="currentColor" stroke-width="3"/>',
+  triangle: '<path d="M10 3 17.5 17H2.5Z"/>',
+  star: '<polygon points="10,2 12,7.3 17.6,7.5 13.2,11.1 14.7,16.5 10,13.4 5.3,16.5 6.8,11.1 2.4,7.5 8,7.3"/>',
+  heart: '<path d="M10 17.2S2.8 12.6 2.8 8.3A3.9 3.9 0 0 1 10 6.1a3.9 3.9 0 0 1 7.2 2.2c0 4.3-7.2 8.9-7.2 8.9Z"/>',
+  arrow: '<path d="M2.5 7.6h8V3.4L17.5 10l-7 6.6v-4.2h-8Z"/>',
+  sparkle: '<path d="M10 2c.7 4.3 3.7 7.3 8 8-4.3.7-7.3 3.7-8 8-.7-4.3-3.7-7.3-8-8 4.3-.7 7.3-3.7 8-8Z"/>',
+};
+
+function shapeGrid(current) {
+  return `<div class="shape-grid">${SHAPES.map((sh) => `
+    <button class="shape-btn ${sh.id === current ? 'is-active' : ''}" data-set="shape"
+      data-value="${sh.id}" title="${sh.label}" type="button">
+      <svg viewBox="0 0 20 20" aria-hidden="true">${SHAPE_ICON[sh.id]}</svg>
+    </button>`).join('')}</div>`;
+}
+
 function shapeProps(l) {
   const grad = l.fill.mode === 'gradient';
-  return `${title(l.shape === 'circle' ? '원' : '사각형')}
+  return `${title(shapeLabel(l.shape))}
+    ${group('종류', shapeGrid(l.shape))}
     ${group('채우기', `
       <div class="seg">
         ${[['solid', '단색'], ['gradient', '그라데이션'], ['glass', '글래스']].map(([v, t]) => `
@@ -751,7 +905,11 @@ function shapeProps(l) {
     ${group('크기', `
       ${slider('가로', 'w', l.w, 20, 4000, 1)}
       ${slider('세로', 'h', l.h, 20, 4000, 1)}
-      ${l.shape === 'rect' ? slider('모서리', 'radius', l.radius, 0, 0.5, 0.01) : ''}`)}
+      ${switchRow('가로세로 비율 유지', 'lockRatio', l.lockRatio)}
+      ${l.shape === 'rect' ? slider('모서리', 'radius', l.radius, 0, 0.5, 0.01) : ''}
+      ${l.shape === 'ring' ? slider('구멍 크기', 'inner', l.inner, 0.05, 0.95, 0.01) : ''}
+      ${l.shape === 'star' ? slider('꼭짓점 수', 'points', l.points, 3, 12, 1) : ''}
+      ${l.shape === 'star' ? slider('뾰족함', 'spike', l.spike, 0.1, 0.9, 0.01) : ''}`)}
 
     ${group('외곽선', `
       <label class="check"><input type="checkbox" data-path="stroke.show" ${l.stroke.show ? 'checked' : ''}><span>외곽선 넣기</span></label>
@@ -809,7 +967,7 @@ function commonGroups(l) {
 const title = (text) => `<div class="prop-title">${text}</div>`;
 
 /* 제목이 있는 묶음은 접을 수 있고, 열고 닫은 상태를 기억한다. */
-const openGroups = new Set(['글자 모양', '채우기', '크기', '효과']);
+const openGroups = new Set(['글자 모양', '종류', '채우기', '크기', '효과']);
 
 const group = (heading, body) => {
   if (!heading) return `<div class="prop-group">${body}</div>`;
@@ -880,8 +1038,9 @@ function propTarget() {
   return sel.kind === 'cell' ? state.photos[sel.index] : selectedLayer();
 }
 
-/* 캔버스 전체 효과는 고른 사진이 아니라 state 에 저장한다. */
-const targetFor = (path) => (path.startsWith('canvasFx.') ? state : propTarget());
+/* 캔버스 전체 효과와 배경 무늬는 고른 사진이 아니라 state 에 저장한다. */
+const STATE_PATHS = ['canvasFx.', 'bgPattern.'];
+const targetFor = (path) => (STATE_PATHS.some((p) => path.startsWith(p)) ? state : propTarget());
 
 function onPropInput(e) {
   const el = e.target.closest('[data-path]');
@@ -934,23 +1093,45 @@ function onPropInput(e) {
   }
 
   applyDerived(target, el.dataset.path);
+  // 비율을 잠갔으면 반대쪽 칸도 방금 바뀌었다. 화면에 반영한다.
+  if (target.lockRatio && (el.dataset.path === 'w' || el.dataset.path === 'h')) syncPropOutputs();
 
   render();
-  // 체크박스는 하위 옵션이 열리고 닫히므로 패널을 다시 만든다.
-  if (el.type === 'checkbox') refreshProps(true);
+  // 체크박스는 보통 하위 옵션이 열리고 닫히므로 패널을 다시 만든다.
+  // 스위치처럼 패널이 그대로인 것은 둬야 켜지는 모습이 끝까지 보인다.
+  if (el.type === 'checkbox' && !el.dataset.keep) refreshProps(true);
   refreshLayerList();
 }
 
 /* 값 하나를 바꾸면 따라 움직여야 하는 것들 */
 function applyDerived(target, path) {
-  // 캔버스 전체 설정(state)은 사진이 아니므로 따라 움직일 게 없다.
-  if (target === state) return;
+  if (target === state) {
+    // 배경 사진은 캔버스를 덮는 범위 밖으로 나가지 않게 잡아 둔다.
+    if (path.startsWith('bgPattern.')) {
+      const { W, H } = getLayout();
+      clampBgPan(W, H);
+    }
+    return;
+  }
   if (state.selection?.kind === 'cell') {
-    clampPan(target, getLayout().rects[state.selection.index]);
+    // 자유 배치에서 틀 크기를 바꾼 직후에는 아직 다시 그리기 전이라 칸이 옛 값이다.
+    // 그래서 방금 넣은 틀 크기를 바로 보고 이동 한계를 건다.
+    clampPan(target, target.free && state.mode === 'free'
+      ? { x: 0, y: 0, w: target.free.w, h: target.free.h }
+      : getLayout().rects[state.selection.index]);
   }
   if (target.type === 'shape' || target.type === 'sticker') {
     if (path === 'w' && target.type === 'sticker') {
       target.h = target.w * (target.img.height / target.img.width);
+    }
+    // 비율을 잠그는 순간의 모양을 기억했다가, 한쪽을 바꾸면 다른 쪽을 맞춰 준다.
+    if (target.type === 'shape') {
+      if (path === 'lockRatio') target._ratio = target.h / target.w;
+      else if (target.lockRatio) {
+        const k = target._ratio || 1;
+        if (path === 'w') target.h = Math.max(20, target.w * k);
+        else if (path === 'h') target.w = Math.max(20, target.h / k);
+      }
     }
     target._w = target.w;
     target._h = target.h;
@@ -977,6 +1158,7 @@ function onNumCommit(e) {
   setPath(target, el.dataset.path, el.dataset.scale ? v * Number(el.dataset.scale) : v);
   syncSliderRow(el, v);
   applyDerived(target, el.dataset.path);
+  if (target.lockRatio && (el.dataset.path === 'w' || el.dataset.path === 'h')) syncPropOutputs();
   render();
   refreshLayerList();
 }
@@ -1004,6 +1186,8 @@ function onPropClick(e, actions) {
     render();
     refreshProps(true);
     refreshPhotoFx(true);
+    refreshBgProps(true);
+    refreshLayerList();
     return;
   }
   if (toggleBtn && target) {
@@ -1016,6 +1200,16 @@ function onPropClick(e, actions) {
 
   const act = actionBtn.dataset.action;
   if (act === 'webfontAdd') return void applyWebFont();
+
+  // 배경 무늬는 고른 대상이 없어도 손댈 수 있다.
+  if (act === 'bgPatternImage') return void actions.pickBgPattern();
+  if (act === 'resetBgPattern') {
+    // 고른 사진은 그대로 두고, 이 무늬의 생김새 값만 되돌린다.
+    Object.assign(bgOpts(), BG_DEFAULTS[state.bgPattern.kind] || {});
+    render();
+    refreshBgProps(true);
+    return;
+  }
 
   const sel = state.selection;
   if (!sel) return;
@@ -1031,6 +1225,19 @@ function onPropClick(e, actions) {
     return;
   }
   if (act === 'resetRot' && target) { target.rot = 0; render(); refreshProps(true); return; }
+  if (act === 'resetFreeRot' && target?.free) { target.free.rot = 0; render(); refreshProps(true); return; }
+  if (act === 'fitFreeBox' && target?.free) {
+    // 틀 가로를 그대로 두고, 사진 원본 비율에 맞춰 세로만 다시 잡는다.
+    const { w, h } = photoSize(target);
+    target.free.h = target.free.w * (h / w);
+    update();
+    return;
+  }
+  if ((act === 'photoFront' || act === 'photoBack') && sel.kind === 'cell') {
+    movePhoto(sel.index, act === 'photoFront' ? state.photos.length - 1 : 0);
+    update();
+    return;
+  }
   if (act === 'resetShadowAngle' && target) { target.shadow.angle = 0; render(); refreshProps(true); return; }
   if (act === 'removePhoto') {
     // 템플릿 모드에서는 뒤 사진이 앞으로 밀리지 않도록 자리만 비운다.
@@ -1061,7 +1268,8 @@ function onPropClick(e, actions) {
 }
 
 function syncPropOutputs() {
-  const all = [propsEl, photoPropsEl, photoFxEl].flatMap((root) => [...root.querySelectorAll('[data-path]')]);
+  const all = [propsEl, photoPropsEl, photoFxEl, bgPropsEl]
+    .flatMap((root) => [...root.querySelectorAll('[data-path]')]);
   for (const el of all) {
     const target = targetFor(el.dataset.path);
     if (!target) continue;
@@ -1124,7 +1332,7 @@ export function refreshLayerList() {
 
 function layerName(l) {
   if (l.type === 'text') return (l.text || '텍스트').split('\n')[0].slice(0, 24) || '텍스트';
-  if (l.type === 'shape') return l.shape === 'circle' ? '원' : '사각형';
+  if (l.type === 'shape') return shapeLabel(l.shape);
   return '스티커';
 }
 

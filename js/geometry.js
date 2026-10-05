@@ -11,18 +11,63 @@ export function photoSize(p) {
   return { w: swap ? p.img.height : p.img.width, h: swap ? p.img.width : p.img.height };
 }
 
-/* 캔버스 크기와 각 사진 칸의 픽셀 좌표를 계산한다. */
+/* 캔버스 크기와 각 사진 칸의 픽셀 좌표를 계산한다.
+   칸은 { x, y, w, h, rot } 이고 rot 은 자유 배치에서만 0 이 아니다. */
 export function computeLayout() {
-  const layout = state.mode === 'template' ? templateLayout() : autoLayout();
+  const layout = state.mode === 'template' ? templateLayout()
+    : state.mode === 'free' ? freeLayout()
+    : autoLayout();
   return clampSize(layout);
 }
+
+/* ── 자유 배치 ───────────────────────────── */
+
+/* 사진마다 들고 있는 틀(photo.free)을 그대로 칸으로 쓴다. 겹쳐도 되고 돌려도 된다.
+   캔버스 크기는 템플릿 모드와 같은 비율·픽셀 설정을 따른다. */
+function freeLayout() {
+  const W = state.canvasW;
+  const H = state.canvasH;
+  const rects = state.photos.map((p) => {
+    if (!p) return { x: 0, y: 0, w: 1, h: 1, rot: 0 };
+    const f = p.free || (p.free = defaultFree(p, W, H));
+    return { x: f.cx - f.w / 2, y: f.cy - f.h / 2, w: f.w, h: f.h, rot: f.rot };
+  });
+  return { W, H, rects };
+}
+
+/* 아무 정보가 없을 때의 기본 틀 — 원본 비율을 지킨 채 캔버스 가운데에 놓는다. */
+export function defaultFree(photo, W, H) {
+  const { w, h } = photoSize(photo);
+  const k = Math.min((W * 0.6) / w, (H * 0.6) / h);
+  return { cx: W / 2, cy: H / 2, w: w * k, h: h * k, rot: 0 };
+}
+
+/* 자유 배치로 넘어올 때, 직전 모드에서 보고 있던 자리를 그대로 물려받는다.
+   좌표는 '넘어오기 전 캔버스' 기준으로 적어 둔다. 캔버스 크기가 달라지는 몫은
+   바로 뒤에 돌아가는 render 의 keepLayersInFrame 이 요소들과 함께 맞춰 준다. */
+export function seedFreeBoxes(prev) {
+  const W = prev?.W > 1 ? prev.W : state.canvasW;
+  const H = prev?.H > 1 ? prev.H : state.canvasH;
+  state.photos.forEach((p, i) => {
+    if (!p || p.free) return;
+    const r = prev?.rects?.[i];
+    p.free = r
+      ? { cx: r.x + r.w / 2, cy: r.y + r.h / 2, w: r.w, h: r.h, rot: 0 }
+      : defaultFree(p, W, H);
+  });
+}
+
+/* 사진이 맞붙는 자리는 테 두 장이 만나므로 외곽선 굵기의 두 배만큼 벌린다.
+   캔버스 가장자리는 테 한 장이라 그 절반(= 굵기)만 비운다. */
+const outlineGap = () => state.outline.width * 2;
+const outlineMargin = () => (state.outline.outer ? state.outline.width : 0);
 
 function templateLayout() {
   const W = state.canvasW;
   const H = state.canvasH;
 
-  const gap = state.gap;
-  const m = state.margin ? gap : 0;
+  const gap = outlineGap();
+  const m = outlineMargin();
   const innerW = W - m * 2;
   const innerH = H - m * 2;
 
@@ -37,6 +82,7 @@ function templateLayout() {
       y: m + y * innerH + top,
       w: Math.max(1, w * innerW - left - right),
       h: Math.max(1, h * innerH - top - bottom),
+      rot: 0,
     };
   });
 
@@ -47,13 +93,13 @@ function templateLayout() {
    맞닿는 변의 길이를 가장 큰 사진에 맞춰 통일하므로 여백이 생기지 않고,
    사진이 한 장이면 그 사진의 원본 크기가 그대로 남는다. */
 function autoLayout() {
-  const gap = state.gap;
-  const m = state.margin ? gap : 0;
+  const gap = outlineGap();
+  const m = outlineMargin();
   const photos = state.photos.filter(Boolean);
 
   if (!photos.length) {
     const S = BASE_SIZE;
-    return { W: S, H: S, rects: [{ x: m, y: m, w: S - m * 2, h: S - m * 2 }] };
+    return { W: S, H: S, rects: [{ x: m, y: m, w: S - m * 2, h: S - m * 2, rot: 0 }] };
   }
 
   const rects = [];
@@ -65,7 +111,7 @@ function autoLayout() {
     let x = m;
     for (const s of sizes) {
       const w = s.w * (H0 / s.h);
-      rects.push({ x, y: m, w, h: H0 });
+      rects.push({ x, y: m, w, h: H0, rot: 0 });
       x += w + gap;
     }
     return { W: Math.round(x - gap + m), H: Math.round(H0 + m * 2), rects };
@@ -75,7 +121,7 @@ function autoLayout() {
   let y = m;
   for (const s of sizes) {
     const h = s.h * (W0 / s.w);
-    rects.push({ x: m, y, w: W0, h });
+    rects.push({ x: m, y, w: W0, h, rot: 0 });
     y += h + gap;
   }
   return { W: Math.round(W0 + m * 2), H: Math.round(y - gap + m), rects };
@@ -92,7 +138,7 @@ function clampSize({ W, H, rects }) {
   return {
     W: Math.round(W * s),
     H: Math.round(H * s),
-    rects: rects.map((r) => ({ x: r.x * s, y: r.y * s, w: r.w * s, h: r.h * s })),
+    rects: rects.map((r) => ({ x: r.x * s, y: r.y * s, w: r.w * s, h: r.h * s, rot: r.rot })),
   };
 }
 
@@ -152,7 +198,8 @@ export function layerCorners(layer) {
 
 export function hitLayer(layer, px, py) {
   const p = toLocal(layer, px, py);
-  if (layer.type === 'shape' && layer.shape === 'circle') {
+  // 둥근 도형은 모양대로 받는다. 속 빈 원은 구멍 안쪽도 잡히게 둔다(집기 쉽도록).
+  if (layer.type === 'shape' && (layer.shape === 'circle' || layer.shape === 'ring')) {
     const rx = layer._w / 2;
     const ry = layer._h / 2;
     return (p.x / rx) ** 2 + (p.y / ry) ** 2 <= 1;
@@ -160,10 +207,36 @@ export function hitLayer(layer, px, py) {
   return Math.abs(p.x) <= layer._w / 2 && Math.abs(p.y) <= layer._h / 2;
 }
 
+/* ── 사진 칸 좌표 ────────────────────────── */
+
+/* 캔버스 좌표를 칸 로컬 좌표(중심 기준, 기울기 제거)로 옮긴다. */
+export function rectLocal(r, px, py) {
+  const dx = px - (r.x + r.w / 2);
+  const dy = py - (r.y + r.h / 2);
+  if (!r.rot) return { x: dx, y: dy };
+  const c = Math.cos(-r.rot);
+  const s = Math.sin(-r.rot);
+  return { x: dx * c - dy * s, y: dx * s + dy * c };
+}
+
+export function rectCorners(r) {
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  const c = Math.cos(r.rot || 0);
+  const s = Math.sin(r.rot || 0);
+  const hw = r.w / 2;
+  const hh = r.h / 2;
+  return [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]]
+    .map(([x, y]) => ({ x: cx + x * c - y * s, y: cy + x * s + y * c }));
+}
+
+/* 위에 그려진 칸부터 찾는다. 자유 배치에서는 칸이 겹칠 수 있다. */
 export function hitCell(rects, px, py) {
-  for (let i = 0; i < rects.length; i++) {
+  for (let i = rects.length - 1; i >= 0; i--) {
     const r = rects[i];
-    if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return i;
+    if (!r) continue;
+    const p = rectLocal(r, px, py);
+    if (Math.abs(p.x) <= r.w / 2 && Math.abs(p.y) <= r.h / 2) return i;
   }
   return -1;
 }

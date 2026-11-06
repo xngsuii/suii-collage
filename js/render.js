@@ -199,14 +199,16 @@ function drawPhoto(photo, rect) {
   // 자유 배치에서 기울인 틀. 자르는 영역도 같이 기울어야 한다.
   if (rect.rot) actx.rotate(rect.rot);
   actx.beginPath();
-  actx.rect(-rect.w / 2, -rect.h / 2, rect.w, rect.h);
+  // 💡 [수정] 0.5px씩 상하좌우를 늘려서 사진끼리 살짝 겹치게(틈새를 덮도록) 만듦
+  const bleed = 0.5; 
+  actx.rect(-rect.w / 2 - bleed, -rect.h / 2 - bleed, rect.w + (bleed * 2), rect.h + (bleed * 2));
   actx.clip();
 
   if (q) actx.rotate((q * Math.PI) / 2);
   if (fh < 0 || fv < 0) actx.scale(fh, fv);
 
-  // 효과가 없으면 원본 이미지가 그대로 돌아온다.
-  actx.drawImage(filtered(photo, photo.img, ownFx(photo)), b.x, b.y, b.w, b.h);
+  // 💡 [수정] 캔버스에 그리는 이미지 크기도 늘어난 영역(bleed)만큼 팽창시킴
+  actx.drawImage(filtered(photo, photo.img, ownFx(photo)), b.x - bleed, b.y - bleed, b.w + (bleed * 2), b.h + (bleed * 2));
   actx.restore();
 }
 

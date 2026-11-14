@@ -18,6 +18,11 @@ export const HANDLE = 9;        // 화면 기준 핸들 크기(px)
 export const ROTATE_OFFSET = 26;
 
 let lastLayout = { W: 1, H: 1, rects: [] };
+
+/* 내보내는 동안에는 빈 칸의 회색 바탕과 + 표시를 그리지 않는다.
+   그 자리에는 아래에 깔린 배경(배경을 끄면 투명)이 그대로 남는다. */
+let exporting = false;
+export function setExporting(on) { exporting = on; }
 export const getLayout = () => lastLayout;
 
 /* ── 메인 ────────────────────────────────── */
@@ -51,7 +56,7 @@ export function render() {
   rects.forEach((rect, i) => {
     const photo = state.photos[i];
     if (!photo) {
-      if (!free) drawPlaceholder(rect);     // 자유 배치에는 빈 칸이라는 것이 없다
+      if (!free && !exporting) drawPlaceholder(rect);     // 자유 배치에는 빈 칸이라는 것이 없다
       return;
     }
     drawPhoto(photo, rect);
@@ -237,7 +242,7 @@ function drawPlaceholder(rect) {
 
 /* 사진 바깥에 둘러지는 테.
    선을 칸 경계에서 바깥쪽으로만 나가게 그어야(중심을 경계 밖 width/2 에 두어야)
-   사진을 깎아먹지 않는다. 맞붙은 두 칸은 각자 width 씩 내보내 사이가 꼭 채워진다. */
+   사진을 깎아먹지 않는다. 맞붙은 두 칸은 width 만큼만 떨어져 있어 두 테가 같은 자리에 포개진다. */
 function drawOutline(r) {
   const w = state.outline.width;
   actx.save();

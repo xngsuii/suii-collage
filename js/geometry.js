@@ -57,9 +57,9 @@ export function seedFreeBoxes(prev) {
   });
 }
 
-/* 사진이 맞붙는 자리는 테 두 장이 만나므로 외곽선 굵기의 두 배만큼 벌린다.
-   캔버스 가장자리는 테 한 장이라 그 절반(= 굵기)만 비운다. */
-const outlineGap = () => state.outline.width * 2;
+/* 사진이 맞붙는 자리도 가장자리와 같은 굵기로 보이도록 외곽선 굵기만큼만 벌린다.
+   맞붙은 두 칸의 테는 같은 자리에 포개져 한 줄이 된다. */
+const outlineGap = () => state.outline.width;
 const outlineMargin = () => (state.outline.outer ? state.outline.width : 0);
 
 function templateLayout() {

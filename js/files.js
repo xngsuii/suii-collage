@@ -13,8 +13,7 @@ input.addEventListener('change', async () => {
   const files = Array.from(input.files || []);
   input.value = '';
   if (!files.length) return finish([]);
-  const imgs = await Promise.all(files.map(loadImage));
-  finish(imgs.filter(Boolean));
+  finish(await loadImages(files));
 });
 
 input.addEventListener('cancel', () => finish([]));
@@ -27,6 +26,15 @@ export function pickImages(multiple = true) {
     input.click();
   });
 }
+
+/* 끌어다 놓은 파일처럼 이미 손에 쥔 파일 목록을 이미지로 바꾼다. 이미지가 아닌 파일은 빠진다. */
+export async function loadImages(files) {
+  const imgs = await Promise.all(Array.from(files).map(loadImage));
+  return imgs.filter(Boolean);
+}
+
+/* 끌어다 놓을 때 받는 사진 형식(SVG 같은 문서형 이미지는 제외). */
+export const isPhotoType = (type) => /^image\/(jpeg|png|webp|gif|avif|bmp)$/.test(type);
 
 function loadImage(file) {
   return new Promise((res) => {

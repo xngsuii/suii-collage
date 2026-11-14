@@ -113,8 +113,8 @@ export const state = {
   canvasH: BASE_SIZE,
   templateId: 'grid4',
 
-  /* 사진마다 바깥에 둘러지는 테. 사진이 맞붙는 자리에서는 두 장의 테가 만나
-     그만큼 서로 떨어지므로, 예전의 '간격' 과 '테두리' 를 이 하나가 겸한다.
+  /* 사진마다 바깥에 둘러지는 테. 사진이 맞붙는 자리에서는 두 장의 테가 한 줄로
+     포개져 굵기만큼 서로 떨어지므로, 예전의 '간격' 과 '테두리' 를 이 하나가 겸한다.
      mode 'fill' 은 테를 색으로 칠하고, 'bg' 는 비워 둬 배경이 비치게 한다. */
   outline: { width: 0, mode: 'fill', color: '#ffffff', outer: true },
 

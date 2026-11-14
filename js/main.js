@@ -1,18 +1,18 @@
 /* 캔버스 조작(선택·이동·확대·회전)과 앱 초기화. */
 
 import {
-  state, bgOpts, makePhoto, makeText, makeShape, makeSticker,
+  state, template, bgOpts, makePhoto, makeText, makeShape, makeSticker,
   selectedLayer, removeLayer, duplicateLayer,
 } from 'app/state.js';
 import {
   render, getLayout, art, overlay, box, HANDLE, rotateHandlePoint, rectRotateHandlePoint,
-  measureText, zoomViewAt, panView,
+  measureText, zoomViewAt, panView, setExporting,
 } from 'app/render.js';
 import {
   hitCell, pickLayer, clampPan, layerCorners, rectCorners, snapPoint, defaultFree,
 } from 'app/geometry.js';
 import { setFullRes } from 'app/effects.js';
-import { pickImages } from 'app/files.js';
+import { pickImages, loadImages, isPhotoType } from 'app/files.js';
 import {
   initLeftPanel, initRightPanel, initStageBar, initLayerReorder, initPanelTabs,
   update, refreshProps, syncFromCanvas, syncZoomBar, paintAllRanges,
@@ -543,6 +543,122 @@ async function fillCell(index) {
   update();
 }
 
+/* ── 미리보기로 사진 끌어다 넣기 ─────────── */
+
+const stage = document.getElementById('stageInner');
+
+/* 끌려오는 것 중에 사진 파일이 하나라도 있는지. 끄는 동안에는 파일 종류만 읽을 수 있다. */
+function hasPhoto(dt) {
+  return !!dt && Array.from(dt.items || []).some((it) => it.kind === 'file' && isPhotoType(it.type));
+}
+
+/* 놓은 자리에 따라 모드별로 넣는다.
+   원본 그대로: 맨 뒤에 잇는다. 캔버스 비율: 놓은 칸에 넣고 남는 장은 빈 칸을 채운다.
+   자유 배치: 놓은 자리를 중심으로 올린다(순서는 맨 뒤). */
+/* 캔버스 비율에서 사진이 들어갈 칸. 칸 위면 그 칸, 칸 밖(여백)이면 첫 빈 칸.
+   빈 칸도 없으면 -1. */
+function firstEmptyCell() {
+  const cells = template().cells.length;
+  for (let i = 0; i < cells; i++) if (!state.photos[i]) return i;
+  return -1;
+}
+function dropCell(p) {
+  const idx = hitCell(getLayout().rects, p.x, p.y);
+  return idx >= 0 ? idx : firstEmptyCell();
+}
+
+function dropPhotos(imgs, p) {
+  const { W, H } = getLayout();
+
+  if (state.mode === 'template') {
+    let target = dropCell(p);
+    let first = -1;
+    for (const img of imgs) {
+      if (target < 0) break;                 // 남는 칸이 없으면 나머지는 버린다
+      while (state.photos.length < target) state.photos.push(null);
+      state.photos[target] = makePhoto(img);
+      if (first < 0) first = target;
+      target = firstEmptyCell();
+    }
+    if (first < 0) return;
+    state.selection = { kind: 'cell', index: first };
+  } else if (state.mode === 'free') {
+    const step = Math.min(W, H) * 0.06;
+    const cx = Math.min(W, Math.max(0, p.x));
+    const cy = Math.min(H, Math.max(0, p.y));
+    imgs.forEach((img, i) => {
+      const photo = makePhoto(img);
+      photo.free = { ...defaultFree(photo, W, H), cx: cx + i * step, cy: cy + i * step };
+      state.photos.push(photo);
+    });
+    state.selection = { kind: 'cell', index: state.photos.length - 1 };
+  } else {
+    for (const img of imgs) state.photos.push(makePhoto(img));
+  }
+  refreshProps(true);
+  update();
+}
+
+/* 놓을 자리 표시. 캔버스 비율에서는 사진이 들어갈 칸에만, 다른 모드에서는 미리보기 전체에 뜬다. */
+let dragDepth = 0;
+const dropBox = document.createElement('div');
+dropBox.className = 'drop-cell';
+box.appendChild(dropBox);
+
+function showDropCell(idx) {
+  const r = idx >= 0 ? getLayout().rects[idx] : null;
+  dropBox.classList.toggle('is-on', !!r);
+  if (!r) return;
+  const k = box.clientWidth / art.width;
+  dropBox.style.left = `${r.x * k}px`;
+  dropBox.style.top = `${r.y * k}px`;
+  dropBox.style.width = `${r.w * k}px`;
+  dropBox.style.height = `${r.h * k}px`;
+}
+
+function setDropHint(e) {
+  const on = !!e;
+  const tpl = on && state.mode === 'template';
+  stage.classList.toggle('is-drop', on && !tpl);
+  showDropCell(tpl ? dropCell(pointer(e)) : -1);
+}
+
+stage.addEventListener('dragenter', (e) => {
+  if (!hasPhoto(e.dataTransfer)) return;
+  dragDepth++;
+  setDropHint(e);
+});
+stage.addEventListener('dragleave', () => {
+  if (dragDepth > 0 && --dragDepth === 0) setDropHint(null);
+});
+stage.addEventListener('dragover', (e) => {
+  if (!hasPhoto(e.dataTransfer)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  e.dataTransfer.dropEffect = 'copy';
+  setDropHint(e);
+});
+stage.addEventListener('drop', async (e) => {
+  dragDepth = 0;
+  setDropHint(null);
+  if (!hasPhoto(e.dataTransfer)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const p = pointer(e);
+  const files = Array.from(e.dataTransfer.files).filter((f) => isPhotoType(f.type));
+  const imgs = await loadImages(files);
+  if (imgs.length) dropPhotos(imgs, p);
+});
+
+// 미리보기 밖이나 사진이 아닌 파일은 받지 않는다. 막지 않으면 브라우저가 그 파일을 열어 버린다.
+for (const type of ['dragover', 'drop']) {
+  window.addEventListener(type, (e) => {
+    if (!Array.from(e.dataTransfer?.types || []).includes('Files')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'none';
+  });
+}
+
 /* 배경 무늬로 쓸 사진 */
 async function pickBgPattern() {
   const [img] = await pickImages(false);
@@ -592,11 +708,13 @@ function exportImage() {
   // 미리보기는 효과를 작게 구워 쓴다. 내보낼 때만 원본 해상도로 다시 굽는다.
   closeTextEditor();
   setFullRes(true);
+  setExporting(true);
   render();
 
   // 선택 표시는 오버레이에만 있으므로 작품 캔버스를 그대로 내보낸다.
   art.toBlob((blob) => {
     setFullRes(false);
+    setExporting(false);
     render();
     if (!blob) return;
     const url = URL.createObjectURL(blob);

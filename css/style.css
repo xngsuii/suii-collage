@@ -41,6 +41,10 @@
   --accent: #1f6090;
   --group: #2a7fbf;   /* 패널 탭 — 내보내기와 같은 색 */
 
+  /* 스크롤 막대 — 고르는 칸 바탕(--soft)과 같은 옅은 색 */
+  --scroll: #e8eef6;
+  --scroll-hi: #d3deeb;
+
   --track: #d2dee9;
   --track-done: #ffffff;
 
@@ -51,6 +55,17 @@
 * { box-sizing: border-box; }
 
 html, body { height: 100%; margin: 0; }
+
+/* 스크롤바 — 흰 바탕 위에 옅고 가는 막대만 남긴다. 위아래 화살표는 없앤다. */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--panel); }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-hi); }
+/* 위 규칙을 모르는 브라우저(Firefox)용 */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll) var(--panel); }
+}
 
 body {
   background:
@@ -1029,6 +1044,29 @@ details.prop-group[open] > .prop-sub::after { transform: translateY(1px) rotate(
     linear-gradient(90deg, var(--line-2) 1px, transparent 1px) 0 0 / 24px 100%,
     var(--panel);
 }
+
+/* 사진 파일을 끌고 들어왔을 때 — 여기에 놓으면 된다는 표시 */
+.stage-inner.is-drop::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  z-index: 4;
+  border: 2px dashed var(--solid-soft);
+  border-radius: var(--radius);
+  background: rgba(74, 154, 212, 0.08);
+  pointer-events: none;
+}
+
+/* 캔버스 비율에서 사진이 들어갈 칸 하나만 짚어 준다. */
+.drop-cell {
+  position: absolute;
+  z-index: 2;
+  display: none;
+  border: 2px dashed var(--solid-soft);
+  background: rgba(74, 154, 212, 0.18);
+  pointer-events: none;
+}
+.drop-cell.is-on { display: block; }
 
 .canvas-box {
   position: absolute;

@@ -325,13 +325,7 @@ export function initLeftPanel(actions) {
 
 /* 외곽선 블록 — 비워 두는 방식이면 색을 고를 이유가 없다. */
 function syncOutlineBlock() {
-  const { width, mode } = state.outline;
-  $('outlineColorField').classList.toggle('is-hidden', mode !== 'fill');
-  $('outlineNote').textContent = width === 0
-    ? '사진 바깥에 둘러지는 테입니다. 굵기를 올리면 사진이 그만큼 서로 떨어집니다.'
-    : mode === 'fill'
-      ? `맞붙은 사진 사이는 테 두 장이 만나 ${width * 2}px 로 보입니다.`
-      : `테 자리를 비워 둬 배경이 비칩니다. 사진 사이는 ${width * 2}px 입니다.`;
+  $('outlineColorField').classList.toggle('is-hidden', state.outline.mode !== 'fill');
 }
 
 /* 배경을 끄면 색도 무늬도 쓸 일이 없다.
@@ -419,12 +413,19 @@ function buildTemplates() {
     b.className = 'tpl' + (t.id === state.templateId ? ' is-active' : '');
     b.dataset.tpl = t.id;
     b.title = `${t.cells.length}칸`;
+    // 틈은 맞닿는 안쪽 변에만 절반씩 나눠 물려, 바깥 여백이 사방으로 고르게 남는다.
+    const E = 1e-6;
+    const G = 1.5;
     for (const [x, y, w, h] of t.cells) {
+      const l = x > E ? G : 0;
+      const r = x + w < 1 - E ? G : 0;
+      const tp = y > E ? G : 0;
+      const b2 = y + h < 1 - E ? G : 0;
       const i = document.createElement('i');
-      i.style.left = `${8 + x * 84}%`;
-      i.style.top = `${8 + y * 84}%`;
-      i.style.width = `${w * 84 - 3}%`;
-      i.style.height = `${h * 84 - 3}%`;
+      i.style.left = `${8 + x * 84 + l}%`;
+      i.style.top = `${8 + y * 84 + tp}%`;
+      i.style.width = `${w * 84 - l - r}%`;
+      i.style.height = `${h * 84 - tp - b2}%`;
       b.appendChild(i);
     }
     b.addEventListener('click', () => {
